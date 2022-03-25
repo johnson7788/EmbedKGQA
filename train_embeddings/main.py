@@ -10,7 +10,6 @@ from tqdm import tqdm
 import os
 
 class Experiment:
-
     def __init__(self, learning_rate=0.0005, ent_vec_dim=200, rel_vec_dim=200, 
                  num_iterations=500, batch_size=128, decay_rate=0., cuda=False, 
                  input_dropout=0.3, hidden_dropout1=0.4, hidden_dropout2=0.5,
@@ -30,7 +29,7 @@ class Experiment:
         self.model = model
         self.l3_reg = l3_reg
         self.loss_type = loss_type
-        self.load_from = load_from
+        self.load_from = load_from  # 加载模型
         if do_batch_norm == 1:
             do_batch_norm = True
         else:
@@ -40,17 +39,42 @@ class Experiment:
                        "do_batch_norm": do_batch_norm, "l3_reg": l3_reg}
         
     def get_data_idxs(self, data):
+        """
+
+        :param data:
+        :type data:
+        :return:
+        :rtype:
+        """
         data_idxs = [(self.entity_idxs[data[i][0]], self.relation_idxs[data[i][1]], \
                       self.entity_idxs[data[i][2]]) for i in range(len(data))]
         return data_idxs
     
     def get_er_vocab(self, data):
+        """
+
+        :param data:
+        :type data:
+        :return:
+        :rtype:
+        """
         er_vocab = defaultdict(list)
         for triple in data:
             er_vocab[(triple[0], triple[1])].append(triple[2])
         return er_vocab
 
     def get_batch(self, er_vocab, er_vocab_pairs, idx):
+        """
+
+        :param er_vocab:
+        :type er_vocab:
+        :param er_vocab_pairs:
+        :type er_vocab_pairs:
+        :param idx:
+        :type idx:
+        :return:
+        :rtype:
+        """
         batch = er_vocab_pairs[idx:idx+self.batch_size]
         targets = torch.zeros([len(batch), len(d.entities)], dtype=torch.float32)
         if self.cuda:
@@ -60,6 +84,15 @@ class Experiment:
         return np.array(batch), targets
 
     def evaluate(self, model, data):
+        """
+
+        :param model:
+        :type model:
+        :param data:
+        :type data:
+        :return:
+        :rtype:
+        """
         model.eval()
         hits = [[] for _ in range(10)]
         ranks = []
@@ -110,6 +143,13 @@ class Experiment:
         return [mrr, meanrank, hitat10, hitat3, hitat1]
 
     def write_embedding_files(self, model):
+        """
+
+        :param model:
+        :type model:
+        :return:
+        :rtype:
+        """
         model.eval()
         model_folder = "../kg_embeddings/%s/" % self.dataset
         data_folder = "../data/%s/" % self.dataset
@@ -169,8 +209,12 @@ class Experiment:
         f.close()
         f2.close()
 
-
     def train_and_eval(self):
+        """
+
+        :return:
+        :rtype:
+        """
         torch.set_num_threads(2)
         best_valid = [0, 0, 0, 0, 0]
         best_test = [0, 0, 0, 0, 0]
@@ -260,8 +304,6 @@ class Experiment:
                          self.loss_type, self.l3_reg))        
            
 
-        
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="MetaQA", nargs="?",
@@ -311,7 +353,8 @@ if __name__ == '__main__':
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available:
-        torch.cuda.manual_seed_all(seed) 
+        torch.cuda.manual_seed_all(seed)
+    # 加载数据
     d = Data(data_dir=data_dir, reverse=True)
     experiment = Experiment(num_iterations=args.num_iterations, batch_size=args.batch_size, learning_rate=args.lr, 
                             decay_rate=args.dr, ent_vec_dim=args.edim, rel_vec_dim=args.rdim, cuda=args.cuda,

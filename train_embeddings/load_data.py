@@ -1,5 +1,6 @@
-class Data:
+import os
 
+class Data:
     def __init__(self, data_dir="data/FB15k-237/", reverse=False):
         self.train_data = self.load_data(data_dir, "train", reverse=reverse)
         self.valid_data = self.load_data(data_dir, "valid", reverse=reverse)
@@ -15,6 +16,8 @@ class Data:
 
     def load_data(self, data_dir, data_type="train", reverse=False):
         file_name = "%s%s.txt" % (data_dir, data_type)
+        print(f"开始读取数据集文件: {file_name}")
+        assert os.path.exists(file_name), f"数据文件{file_name}不存在"
         with open(file_name, "r") as f:
             data = f.read().strip().split("\n")
             data = [i.split('\t') for i in data]
