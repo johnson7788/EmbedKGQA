@@ -9,7 +9,6 @@ import argparse
 from tqdm import tqdm
 import os
 
-    
 class Experiment:
 
     def __init__(self, learning_rate=0.0005, ent_vec_dim=200, rel_vec_dim=200, 
@@ -265,44 +264,44 @@ class Experiment:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default="FB15k-237", nargs="?",
-                    help="Which dataset to use: FB15k, FB15k-237, WN18 or WN18RR.")
+    parser.add_argument("--dataset", type=str, default="MetaQA", nargs="?",
+                    help="选择使用哪种数据集 FB15k, FB15k-237, WN18 or WN18RR.")
     parser.add_argument("--num_iterations", type=int, default=500, nargs="?",
-                    help="Number of iterations.")
+                    help="迭代次数")
     parser.add_argument("--batch_size", type=int, default=128, nargs="?",
                     help="Batch size.")
     parser.add_argument("--lr", type=float, default=0.0005, nargs="?",
                     help="Learning rate.")
-    parser.add_argument("--model", type=str, default='Rotat3', nargs="?",
-                    help="Model.")
+    parser.add_argument("--model", type=str, default='ComplEx', nargs="?",
+                    help="支持， DistMult，SimplE，ComplEx，RESCAL，TuckER")
     parser.add_argument("--dr", type=float, default=1.0, nargs="?",
                     help="Decay rate.")
     parser.add_argument("--edim", type=int, default=200, nargs="?",
-                    help="Entity embedding dimensionality.")
+                    help="实体嵌入维度")
     parser.add_argument("--rdim", type=int, default=200, nargs="?",
-                    help="Relation embedding dimensionality.")
+                    help="关系嵌入维度")
     parser.add_argument("--cuda", type=bool, default=True, nargs="?",
-                    help="Whether to use cuda (GPU) or not (CPU).")
+                    help="是否使用GPU")
     parser.add_argument("--input_dropout", type=float, default=0.3, nargs="?",
-                    help="Input layer dropout.")
+                    help="输入层的dropout")
     parser.add_argument("--hidden_dropout1", type=float, default=0.4, nargs="?",
                     help="Dropout after the first hidden layer.")
     parser.add_argument("--hidden_dropout2", type=float, default=0.5, nargs="?",
                     help="Dropout after the second hidden layer.")
     parser.add_argument("--label_smoothing", type=float, default=0.1, nargs="?",
                     help="Amount of label smoothing.")
-    parser.add_argument("--outfile", type=str, default='tucker.model', nargs="?",
-                    help="File to save")
+    parser.add_argument("--outfile", type=str, default='metaqa_complex.model', nargs="?",
+                    help="训练好的模型的名字")
     parser.add_argument("--valid_steps", type=int, default=1, nargs="?",
                     help="Epochs before u validate")
     parser.add_argument("--loss_type", type=str, default='BCE', nargs="?",
-                    help="Loss type")
+                    help="损失类型")
     parser.add_argument("--do_batch_norm", type=int, default=1, nargs="?",
-                    help="Do batch norm or not (0, 1)")
+                    help="是否做批归一化 or not (0, 1)")
     parser.add_argument("--l3_reg", type=float, default=0.0, nargs="?",
                     help="l3 reg hyperparameter")
     parser.add_argument("--load_from", type=str, default='', nargs="?",
-                    help="load from state dict")
+                    help="是否从state dict加载模型")
 
     args = parser.parse_args()
     dataset = args.dataset
