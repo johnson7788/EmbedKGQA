@@ -156,6 +156,7 @@ class Experiment:
         embedding_type = self.model
         if os.path.exists(model_folder) == False:
             os.mkdir(model_folder)
+        print(f"将保存模型到: {model_folder}")
         R_numpy = model.R.weight.data.cpu().numpy()
         E_numpy = model.E.weight.data.cpu().numpy()
         bn_list = []
@@ -211,15 +212,15 @@ class Experiment:
 
     def train_and_eval(self):
         """
-
+        训练和评估
         :return:
         :rtype:
         """
         torch.set_num_threads(2)
         best_valid = [0, 0, 0, 0, 0]
         best_test = [0, 0, 0, 0, 0]
-        self.entity_idxs = {d.entities[i]:i for i in range(len(d.entities))}
-        self.relation_idxs = {d.relations[i]:i for i in range(len(d.relations))}
+        self.entity_idxs = {d.entities[i]:i for i in range(len(d.entities))}   #实体到id的映射
+        self.relation_idxs = {d.relations[i]:i for i in range(len(d.relations))}  #关系到id的映射
         f = open('../data/' + self.dataset +'/entities.dict', 'w')
         for key, value in self.entity_idxs.items():
             f.write(key + '\t' + str(value) +'\n')
@@ -229,9 +230,9 @@ class Experiment:
             f.write(key + '\t' + str(value) +'\n')
         f.close()
         train_data_idxs = self.get_data_idxs(d.train_data)
-        print("Number of training data points: %d" % len(train_data_idxs))
-        print('Entities: %d' % len(self.entity_idxs))
-        print('Relations: %d' % len(self.relation_idxs))
+        print("训练的样本个数: %d" % len(train_data_idxs))
+        print('实体个数: %d' % len(self.entity_idxs))
+        print('关系个数: %d' % len(self.relation_idxs))
         model = TuckER(d, self.ent_vec_dim, self.rel_vec_dim, **self.kwargs)
         model.init()
         if self.load_from != '':
@@ -278,7 +279,7 @@ class Experiment:
             with torch.no_grad():
                 if it % self.valid_steps == 0:
                     start_test = time.time()
-                    print("Validation:")
+                    print("开始验证:")
                     valid = self.evaluate(model, d.valid_data)
                     print("Test:")
                     test = self.evaluate(model, d.test_data)
@@ -288,9 +289,9 @@ class Experiment:
                         best_valid = valid
                         best_test = test
                         print('Validation MRR increased.')
-                        print('Saving model...')
-                        # self.write_embedding_files(model)
-                        print('Model saved!')    
+                        print('保存模型中...')
+                        self.write_embedding_files(model)
+                        print('模型保存完成!')
                     
                     print('Best valid:', best_valid)
                     print('Best Test:', best_test)

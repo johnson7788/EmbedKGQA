@@ -6,11 +6,21 @@ import torch.nn.functional as F
 
 class TuckER(torch.nn.Module):
     def __init__(self, d, d1, d2, **kwargs):
-        super(TuckER, self).__init__()
+        """
 
-        self.model = kwargs["model"]
+        :param d: 数据集
+        :type d: <load_data.Data object at 0x7fd47a84ea60>
+        :param d1: 实体嵌入维度
+        :type d1:200
+        :param d2: 关系嵌入维度
+        :type d2:200
+        :param kwargs:
+        :type kwargs:
+        """
+        super(TuckER, self).__init__()
+        self.model = kwargs["model"]  #'ComplEx'
         multiplier = 3
-        self.loss_type = kwargs['loss_type']
+        self.loss_type = kwargs['loss_type']   #'BCE'
 
         if self.loss_type == 'BCE':
             # self.loss = torch.nn.BCELoss()
@@ -41,14 +51,14 @@ class TuckER(torch.nn.Module):
         else:
             print('Incorrect model specified:', self.model)
             exit(0)
-        self.E = torch.nn.Embedding(len(d.entities), d1 * multiplier, padding_idx=0)
+        self.E = torch.nn.Embedding(len(d.entities), d1 * multiplier, padding_idx=0)  #实体嵌入，【实体个数，实体嵌入*2】
         
         if self.model == 'RESCAL':
             self.R = torch.nn.Embedding(len(d.relations), d1 * d1, padding_idx=0)
         elif self.model == 'TuckER':
             self.R = torch.nn.Embedding(len(d.relations), d2, padding_idx=0)
         else:
-            self.R = torch.nn.Embedding(len(d.relations), d1 * multiplier, padding_idx=0)
+            self.R = torch.nn.Embedding(len(d.relations), d1 * multiplier, padding_idx=0)   # 关系嵌入
 
         self.entity_dim = d1 * multiplier
         self.do_batch_norm = True
@@ -70,7 +80,7 @@ class TuckER(torch.nn.Module):
             self.bn2 = torch.nn.BatchNorm1d(multiplier)
 
         self.logsoftmax = torch.nn.LogSoftmax(dim=-1)
-        print('Model is', self.model)
+        print('使用的模型是：', self.model)
         
     def freeze_entity_embeddings(self):
         self.E.weight.requires_grad = False
@@ -91,6 +101,11 @@ class TuckER(torch.nn.Module):
         return loss
 
     def init(self):
+        """
+
+        :return:
+        :rtype:
+        """
         xavier_normal_(self.E.weight.data)            
         if self.model == 'Rotat3':
             nn.init.uniform_(self.R.weight.data, a=-1.0, b=1.0)
