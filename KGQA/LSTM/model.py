@@ -109,11 +109,11 @@ class RelationExtractor(nn.Module):
         
 
     def applyNonLinear(self, outputs):
-        outputs = self.lin1(outputs)
+        outputs = self.lin1(outputs)  #Linear(in_features=400, out_features=256, bias=False)
         outputs = F.relu(outputs)
-        outputs = self.lin2(outputs)
+        outputs = self.lin2(outputs)  #Linear(in_features=256, out_features=256, bias=False)
         outputs = F.relu(outputs)
-        outputs = self.hidden2rel(outputs)
+        outputs = self.hidden2rel(outputs)   #Linear(in_features=256, out_features=60, bias=True)
         # outputs = self.hidden2rel_base(outputs)
         return outputs
 

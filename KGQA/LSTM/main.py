@@ -36,15 +36,15 @@ parser.add_argument('--scoredrop', type=float, default=0.0)
 parser.add_argument('--l3_reg', type=float, default=0.0)
 parser.add_argument('--decay', type=float, default=1.0)
 parser.add_argument('--shuffle_data', type=bool, default=True)
-parser.add_argument('--num_workers', type=int, default=15)
+parser.add_argument('--num_workers', type=int, default=0, help='修改成0，或其它数字')
 parser.add_argument('--lr', type=float, default=0.0001)
 parser.add_argument('--nb_epochs', type=int, default=90)
 parser.add_argument('--gpu', type=int, default=0)
 parser.add_argument('--neg_batch_size', type=int, default=128)
 parser.add_argument('--hidden_dim', type=int, default=200)
 parser.add_argument('--embedding_dim', type=int, default=256)
-parser.add_argument('--relation_dim', type=int, default=30)
-parser.add_argument('--use_cuda', type=bool, default=True)
+parser.add_argument('--relation_dim', type=int, default=200, help='注意，这里要和训练embedding时保持一致')
+parser.add_argument('--use_cuda', type=bool, default=False, help='是否使用GPU')
 parser.add_argument('--patience', type=int, default=5)
 parser.add_argument('--freeze', type=str2bool, default=True)
 
@@ -193,10 +193,10 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                 running_loss = 0
                 for i_batch, a in enumerate(loader):
                     model.zero_grad()
-                    question = a[0].to(device)
-                    sent_len = a[1].to(device)
-                    positive_head = a[2].to(device)
-                    positive_tail = a[3].to(device)                    
+                    question = a[0].to(device)   #torch.Size([1024, 11])  [batch_size,??]
+                    sent_len = a[1].to(device)   #1024
+                    positive_head = a[2].to(device)  #1024
+                    positive_tail = a[3].to(device)      #torch.Size([1024, 43234])
 
                     loss = model(sentence=question, p_head=positive_head, p_tail=positive_tail, question_len=sent_len)
                     loss.backward()
@@ -227,7 +227,7 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     if not os.path.exists(checkpoint_path):
                         os.makedirs(checkpoint_path)
                     checkpoint_file_name = checkpoint_path +model_name+ '_' + num_hops + suffix + ".pt"
-                    print('Saving checkpoint to ', checkpoint_file_name)
+                    print('保持checkpoint到:', checkpoint_file_name)
                     torch.save(model.state_dict(), checkpoint_file_name)
                 elif (score < best_score + eps) and (no_update < patience):
                     no_update +=1
