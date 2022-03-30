@@ -233,7 +233,7 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     no_update +=1
                     print("Validation accuracy decreases to %f from %f, %d more epoch to check"%(score, best_score, patience-no_update))
                 elif no_update == patience:
-                    print("Model has exceed patience. Saving best model and exiting")
+                    print(f"达到预设的训练的patience，保存最好的模型，训练退出，模型保存到{checkpoint_path}best_score_model.pt")
                     torch.save(best_model, checkpoint_path+ "best_score_model.pt")
                     exit()
                 if epoch == nb_epochs-1:
