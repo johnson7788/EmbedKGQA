@@ -24,8 +24,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--hops', type=str, default='1')
 parser.add_argument('--ls', type=float, default=0.0)
 parser.add_argument('--validate_every', type=int, default=5)
-parser.add_argument('--model', type=str, default='Rotat3')
-parser.add_argument('--kg_type', type=str, default='half')
+parser.add_argument('--model', type=str, default='ComplEx')
+parser.add_argument('--kg_type', type=str, default='full',help="可以选择half，或者full")
 
 parser.add_argument('--mode', type=str, default='eval')
 parser.add_argument('--batch_size', type=int, default=1024)
@@ -293,7 +293,7 @@ if args.kg_type == 'half':
     data_path = '../../data/QA_data/MetaQA/qa_train_' + hops + '_half.txt'
 else:
     data_path = '../../data/QA_data/MetaQA/qa_train_' + hops + '.txt'
-print('Train file is ', data_path)
+print('训练文件是 ', data_path)
 
 hops_without_old = hops.replace('_old', '')
 valid_data_path = '../../data/QA_data/MetaQA/qa_dev_' + hops_without_old + '.txt'
@@ -301,7 +301,7 @@ test_data_path = '../../data/QA_data/MetaQA/qa_test_' + hops_without_old + '.txt
 
 model_name = args.model
 kg_type = args.kg_type
-print('KG type is', kg_type)
+print('KG的类型是', kg_type)
 embedding_folder = '../../pretrained_models/embeddings/' + model_name + '_MetaQA_' + kg_type
 
 entity_embedding_path = embedding_folder + '/E.npy'
