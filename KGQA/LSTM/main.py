@@ -27,7 +27,7 @@ parser.add_argument('--validate_every', type=int, default=5)
 parser.add_argument('--model', type=str, default='ComplEx')
 parser.add_argument('--kg_type', type=str, default='full',help="可以选择half，或者full")
 
-parser.add_argument('--mode', type=str, default='eval')
+parser.add_argument('--mode', type=str, default='eval', help='train 还是eval，不同的模式')
 parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--dropout', type=float, default=0.1)
 parser.add_argument('--entdrop', type=float, default=0.0)
@@ -146,7 +146,7 @@ def writeToFile(lines, fname):
     for line in lines:
         f.write(line + '\n')
     f.close()
-    print('Wrote to ', fname)
+    print('验证集结果已经保存到文件:', fname)
     return
 
 def set_bn_eval(m):
@@ -218,8 +218,8 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     best_model = model.state_dict()
                     print(hops + " hop Validation accuracy increased from previous epoch", score)
                     _, test_score = validate(model=model, data_path= test_data_path, word2idx= word2ix, entity2idx= entity2idx, device=device, model_name=model_name)
-                    print('Test score for best valid so far:', test_score)
-                    # writeToFile(answers, 'results_' + model_name + '_' + hops + '.txt')
+                    print('验证集最好的分数是 :', test_score)
+                    writeToFile(answers, 'results_' + model_name + '_' + hops + '.txt')
                     suffix = ''
                     if freeze == True:
                         suffix = '_frozen'
@@ -284,6 +284,35 @@ def data_generator(data, word2ix, entity2idx):
         yield torch.tensor(head, dtype=torch.long),torch.tensor(encoded_question, dtype=torch.long) , ans, torch.tensor(len(encoded_question), dtype=torch.long), data_sample[1]
 
 
+def do_eval(data_path,entity_path, relation_path,  entity_dict, relation_dict,model_path,train_data,gpu, hidden_dim, relation_dim,embedding_dim):
+    """
+    参考训练时的验证集结果
+    :param data_path:
+    :type data_path:
+    :param entity_path:
+    :type entity_path:
+    :param relation_path:
+    :type relation_path:
+    :param entity_dict:
+    :type entity_dict:
+    :param relation_dict:
+    :type relation_dict:
+    :param model_path:
+    :type model_path:
+    :param train_data:
+    :type train_data:
+    :param gpu:
+    :type gpu:
+    :param hidden_dim:
+    :type hidden_dim:
+    :param relation_dim:
+    :type relation_dim:
+    :param embedding_dim:
+    :type embedding_dim:
+    :return:
+    :rtype:
+    """
+    pass
 
 
 hops = args.hops
@@ -348,10 +377,8 @@ if args.mode == 'train':
     w_matrix=w_matrix,
     bn_list=bn_list)
 
-
-
 elif args.mode == 'eval':
-    eval(data_path = test_data_path,
+    do_eval(data_path = test_data_path,
     entity_path=entity_embedding_path, 
     relation_path=relation_embedding_path, 
     entity_dict=entity_dict, 
