@@ -12,6 +12,41 @@ from torch.nn.init import xavier_normal_
 class RelationExtractor(nn.Module):
 
     def __init__(self, embedding_dim, hidden_dim, vocab_size, relation_dim, num_entities, pretrained_embeddings, device, entdrop, reldrop, scoredrop, l3_reg, model, ls, w_matrix, bn_list, freeze=True):
+        """
+
+        :param embedding_dim:
+        :type embedding_dim:
+        :param hidden_dim:
+        :type hidden_dim:
+        :param vocab_size:
+        :type vocab_size:
+        :param relation_dim:
+        :type relation_dim:
+        :param num_entities:
+        :type num_entities:
+        :param pretrained_embeddings:
+        :type pretrained_embeddings:
+        :param device:
+        :type device:
+        :param entdrop:
+        :type entdrop:
+        :param reldrop:
+        :type reldrop:
+        :param scoredrop:
+        :type scoredrop:
+        :param l3_reg:
+        :type l3_reg:
+        :param model:
+        :type model:
+        :param ls:
+        :type ls:
+        :param w_matrix:
+        :type w_matrix:
+        :param bn_list:  批归一化的模型参数
+        :type bn_list:  dict
+        :param freeze:
+        :type freeze:
+        """
         super(RelationExtractor, self).__init__()
         self.device = device
         self.bn_list = bn_list
@@ -67,7 +102,7 @@ class RelationExtractor(nn.Module):
         # The LSTM takes word embeddings as inputs, and outputs hidden states
         # with dimensionality hidden_dim.
         self.pretrained_embeddings = pretrained_embeddings
-        print('Frozen:', self.freeze)
+        print('冻结预训练的Embedding的参数:', self.freeze)
         self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
         # self.embedding = nn.Embedding(self.num_entities, self.relation_dim)
         # xavier_normal_(self.embedding.weight.data)
@@ -93,7 +128,7 @@ class RelationExtractor(nn.Module):
             for key, value in self.bn_list[i].items():
                 self.bn_list[i][key] = torch.Tensor(value).to(device)
 
-        
+        # 批归一化的模型参数
         self.bn0.weight.data = self.bn_list[0]['weight']
         self.bn0.bias.data = self.bn_list[0]['bias']
         self.bn0.running_mean.data = self.bn_list[0]['running_mean']

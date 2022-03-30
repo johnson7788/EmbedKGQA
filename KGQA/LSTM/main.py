@@ -45,8 +45,8 @@ parser.add_argument('--hidden_dim', type=int, default=200)
 parser.add_argument('--embedding_dim', type=int, default=256)
 parser.add_argument('--relation_dim', type=int, default=200, help='注意，这里要和训练embedding时保持一致')
 parser.add_argument('--use_cuda', type=bool, default=False, help='是否使用GPU')
-parser.add_argument('--patience', type=int, default=5)
-parser.add_argument('--freeze', type=str2bool, default=True)
+parser.add_argument('--patience', type=int, default=5, help='验证集多少次不更新最好指标后，那么就停止训练')
+parser.add_argument('--freeze', type=str2bool, default=True, help="是否冻结预训练的Embedding的参数")
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5,6,7"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"

@@ -319,10 +319,8 @@ if __name__ == '__main__':
                     help="支持， DistMult，SimplE，ComplEx，RESCAL，TuckER")
     parser.add_argument("--dr", type=float, default=1.0, nargs="?",
                     help="Decay rate.")
-    parser.add_argument("--edim", type=int, default=200, nargs="?",
-                    help="实体嵌入维度")
-    parser.add_argument("--rdim", type=int, default=200, nargs="?",
-                    help="关系嵌入维度")
+    parser.add_argument("--edim", type=int, default=200, nargs="?", help="实体嵌入维度")
+    parser.add_argument("--rdim", type=int, default=200, nargs="?", help="关系嵌入维度")
     parser.add_argument("--cuda", type=bool, default=True, nargs="?",
                     help="是否使用GPU")
     parser.add_argument("--input_dropout", type=float, default=0.3, nargs="?",
