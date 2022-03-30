@@ -155,7 +155,7 @@ class Experiment:
         data_folder = "../data/%s/" % self.dataset
         embedding_type = self.model
         if os.path.exists(model_folder) == False:
-            os.mkdir(model_folder)
+            os.makedirs(model_folder)
         print(f"将保存模型到: {model_folder}")
         R_numpy = model.R.weight.data.cpu().numpy()
         E_numpy = model.E.weight.data.cpu().numpy()
@@ -248,7 +248,7 @@ class Experiment:
         er_vocab = self.get_er_vocab(train_data_idxs)
         er_vocab_pairs = list(er_vocab.keys())
 
-        print("Starting training...")
+        print("开始训练...")
 
         for it in range(1, self.num_iterations+1):
             start_train = time.time()
@@ -281,7 +281,7 @@ class Experiment:
                     start_test = time.time()
                     print("开始验证:")
                     valid = self.evaluate(model, d.valid_data)
-                    print("Test:")
+                    print("开始测试:")
                     test = self.evaluate(model, d.test_data)
                     valid_mrr = valid[0]
                     test_mrr = test[0]
