@@ -223,6 +223,8 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     if freeze == True:
                         suffix = '_frozen'
                     checkpoint_path = '../../checkpoints/MetaQA/'
+                    if not os.path.exists(checkpoint_path):
+                        os.makedirs(checkpoint_path)
                     checkpoint_file_name = checkpoint_path +model_name+ '_' + num_hops + suffix + ".pt"
                     print('Saving checkpoint to ', checkpoint_file_name)
                     torch.save(model.state_dict(), checkpoint_file_name)
