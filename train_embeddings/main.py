@@ -48,7 +48,7 @@ class Experiment:
     def get_er_vocab(self, data):
         er_vocab = defaultdict(list)
         for triple in data:
-            er_vocab[(triple[0], triple[1])].append(triple[2])
+            er_vocab[(triple[0], triple[1])].append(triple[2]) #什么意思
         return er_vocab
 
     def get_batch(self, er_vocab, er_vocab_pairs, idx):
@@ -172,12 +172,12 @@ class Experiment:
 
 
     def train_and_eval(self):
-        torch.set_num_threads(2)
-        best_valid = [0, 0, 0, 0, 0]
-        best_test = [0, 0, 0, 0, 0]
-        self.entity_idxs = {d.entities[i]:i for i in range(len(d.entities))}
-        self.relation_idxs = {d.relations[i]:i for i in range(len(d.relations))}
-        f = open('../data/' + self.dataset +'/entities.dict', 'w')
+        torch.set_num_threads(2)#设置2个线程
+        best_valid = [0, 0, 0, 0, 0]#记录最佳验证
+        best_test = [0, 0, 0, 0, 0]#记录最佳测试
+        self.entity_idxs = {d.entities[i]:i for i in range(len(d.entities))}#获取实体的下标43234个
+        self.relation_idxs = {d.relations[i]:i for i in range(len(d.relations))}#获取关系的下标18个
+        f = open('../data/' + self.dataset +'/entities.dict', 'w') #打开关系和实体字典，写入key和value的长度关系
         for key, value in self.entity_idxs.items():
             f.write(key + '\t' + str(value) +'\n')
         f.close()
@@ -186,10 +186,10 @@ class Experiment:
             f.write(key + '\t' + str(value) +'\n')
         f.close()
         train_data_idxs = self.get_data_idxs(d.train_data)
-        print("Number of training data points: %d" % len(train_data_idxs))
-        print('Entities: %d' % len(self.entity_idxs))
+        print("Number of training data points: %d" % len(train_data_idxs))#多少个训练数据267164
+        print('Entities: %d' % len(self.entity_idxs))#多少个实体和关系
         print('Relations: %d' % len(self.relation_idxs))
-        model = TuckER(d, self.ent_vec_dim, self.rel_vec_dim, **self.kwargs)
+        model = TuckER(d, self.ent_vec_dim, self.rel_vec_dim, **self.kwargs) #选择模型
         model.init()
         if self.load_from != '':
             fname = self.load_from
@@ -246,7 +246,7 @@ class Experiment:
                         best_test = test
                         print('Validation MRR increased.')
                         print('Saving model...')
-                        # self.write_embedding_files(model)
+                        self.write_embedding_files(model)
                         print('Model saved!')    
                     
                     print('Best valid:', best_valid)
@@ -265,55 +265,55 @@ class Experiment:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", type=str, default="FB15k-237", nargs="?",
-                    help="Which dataset to use: FB15k, FB15k-237, WN18 or WN18RR.")
+    parser.add_argument("--dataset", type=str, default="waishen", nargs="?",
+                    help="使用哪个数据集: waishen,fbwq_full, FB15k-237, MetaQA or WN18RR.")
     parser.add_argument("--num_iterations", type=int, default=500, nargs="?",
-                    help="Number of iterations.")
+                    help="迭代的次数.")
     parser.add_argument("--batch_size", type=int, default=128, nargs="?",
-                    help="Batch size.")
+                    help="批次大小.")
     parser.add_argument("--lr", type=float, default=0.0005, nargs="?",
-                    help="Learning rate.")
-    parser.add_argument("--model", type=str, default='Rotat3', nargs="?",
-                    help="Model.")
+                    help="学习率")#
+    parser.add_argument("--model", type=str, default='ComplEx', nargs="?",
+                    help="使用训练的模型:Model.ComplEx，Rotat3，SimplE，DistMult，RESCAL，TuckER")
     parser.add_argument("--dr", type=float, default=1.0, nargs="?",
-                    help="Decay rate.")
+                    help="衰减率.")
     parser.add_argument("--edim", type=int, default=200, nargs="?",
-                    help="Entity embedding dimensionality.")
+                    help="实体嵌入的维度.")
     parser.add_argument("--rdim", type=int, default=200, nargs="?",
-                    help="Relation embedding dimensionality.")
+                    help="关系嵌入的维度.")
     parser.add_argument("--cuda", type=bool, default=True, nargs="?",
-                    help="Whether to use cuda (GPU) or not (CPU).")
+                    help="是否使用显卡.True,False ")
     parser.add_argument("--input_dropout", type=float, default=0.3, nargs="?",
-                    help="Input layer dropout.")
+                    help="输入层的噪音.")
     parser.add_argument("--hidden_dropout1", type=float, default=0.4, nargs="?",
-                    help="Dropout after the first hidden layer.")
+                    help="在第一个隐藏层后的噪音.")
     parser.add_argument("--hidden_dropout2", type=float, default=0.5, nargs="?",
-                    help="Dropout after the second hidden layer.")
+                    help="在第二个隐藏层后的噪音.")
     parser.add_argument("--label_smoothing", type=float, default=0.1, nargs="?",
-                    help="Amount of label smoothing.")
+                    help="标签平滑的数量.")
     parser.add_argument("--outfile", type=str, default='tucker.model', nargs="?",
-                    help="File to save")
+                    help="输出文件保存名字")
     parser.add_argument("--valid_steps", type=int, default=1, nargs="?",
-                    help="Epochs before u validate")
+                    help="在你验证之前的epoch")
     parser.add_argument("--loss_type", type=str, default='BCE', nargs="?",
-                    help="Loss type")
+                    help="损失函数")
     parser.add_argument("--do_batch_norm", type=int, default=1, nargs="?",
-                    help="Do batch norm or not (0, 1)")
+                    help="是否使用批次归一化 (0, 1)")
     parser.add_argument("--l3_reg", type=float, default=0.0, nargs="?",
-                    help="l3 reg hyperparameter")
+                    help="l3 reg超参数")
     parser.add_argument("--load_from", type=str, default='', nargs="?",
-                    help="load from state dict")
+                    help="从状态描述中加载")
 
     args = parser.parse_args()
     dataset = args.dataset
     data_dir = "../data/%s/" % dataset
     torch.backends.cudnn.deterministic = True 
-    seed = 20
+    seed = 20 #确保每个epoch的批数据是一样的
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available:
-        torch.cuda.manual_seed_all(seed) 
-    d = Data(data_dir=data_dir, reverse=True)
+        torch.cuda.manual_seed_all(seed) ##
+    d = Data(data_dir=data_dir, reverse=True) #data类，处理实体和关系的表示形式
     experiment = Experiment(num_iterations=args.num_iterations, batch_size=args.batch_size, learning_rate=args.lr, 
                             decay_rate=args.dr, ent_vec_dim=args.edim, rel_vec_dim=args.rdim, cuda=args.cuda,
                             input_dropout=args.input_dropout, hidden_dropout1=args.hidden_dropout1, 
