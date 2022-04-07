@@ -175,19 +175,19 @@ class RelationExtractor(nn.Module):
         return pred
 
     def ComplEx(self, head, relation):
-        head = torch.stack(list(torch.chunk(head, 2, dim=1)), dim=1)
-        head = self.bn0(head)
-        head = self.ent_dropout(head)
-        relation = self.rel_dropout(relation)
-        head = head.permute(1, 0, 2)
-        re_head = head[0]
-        im_head = head[1]
+        head = torch.stack(list(torch.chunk(head, 2, dim=1)), dim=1) #(128,2,200)
+        head = self.bn0(head) #（128，2，200）
+        head = self.ent_dropout(head) #（128，2，200）
+        relation = self.rel_dropout(relation) #（128，400）
+        head = head.permute(1, 0, 2) #（2，128，200）2 代表head矩阵里有2个（128，200）的列表
+        re_head = head[0] #（128，200）
+        im_head = head[1] #（128，200）
 
-        re_relation, im_relation = torch.chunk(relation, 2, dim=1)
-        re_tail, im_tail = torch.chunk(self.embedding.weight, 2, dim =1)
+        re_relation, im_relation = torch.chunk(relation, 2, dim=1)#(128,200)(128,200)
+        re_tail, im_tail = torch.chunk(self.embedding.weight, 2, dim =1) #(43234,200)(43234,200)
 
-        re_score = re_head * re_relation - im_head * im_relation
-        im_score = re_head * im_relation + im_head * re_relation
+        re_score = re_head * re_relation - im_head * im_relation #(128,200)
+        im_score = re_head * im_relation + im_head * re_relation #(128,200)
 
         score = torch.stack([re_score, im_score], dim=1)
         score = self.bn2(score)
@@ -249,16 +249,16 @@ class RelationExtractor(nn.Module):
         return pred
     
     def forward(self, sentence, p_head, p_tail, question_len):
-        embeds = self.word_embeddings(sentence)
-        packed_output = pack_padded_sequence(embeds, question_len, batch_first=True)
+        embeds = self.word_embeddings(sentence) #(128,11,256) (128,8,256)
+        packed_output = pack_padded_sequence(embeds, question_len.cpu(), batch_first=True)
         outputs, (hidden, cell_state) = self.GRU(packed_output)
         outputs, outputs_length = pad_packed_sequence(outputs, batch_first=True)
         outputs = torch.cat([hidden[0,:,:], hidden[1,:,:]], dim=-1)
         # outputs = self.drop1(outputs)
         # rel_embedding = self.hidden2rel(outputs)
-        rel_embedding = self.applyNonLinear(outputs)
-        p_head = self.embedding(p_head)
-        pred = self.getScores(p_head, rel_embedding)
+        rel_embedding = self.applyNonLinear(outputs) #(128,400)
+        p_head = self.embedding(p_head) #（128，400）
+        pred = self.getScores(p_head, rel_embedding) # 头实体和关系的嵌入维度都是（128，400）
         actual = p_tail
         if self.label_smoothing:
             actual = ((1.0-self.label_smoothing)*actual) + (1.0/actual.size(1)) 

@@ -28,24 +28,25 @@ class DatasetMetaQA(Dataset):
         return len(self.data)
 
     def toOneHot(self, indices):
-        indices = torch.LongTensor(indices)
-        batch_size = len(indices)
-        vec_len = len(self.entity2idx)
-        one_hot = torch.FloatTensor(vec_len)
+        indices = torch.LongTensor(indices) #indices:tensor([16991])
+        batch_size = len(indices) #batch_size:1 尾实体的个数
+        vec_len = len(self.entity2idx) #vec_len:43234
+        one_hot = torch.FloatTensor(vec_len) #one_hot:43234
         one_hot.zero_()
         one_hot.scatter_(0, indices, 1)
         return one_hot
 
     def __getitem__(self, index):
-        data_point = self.data[index]
-        question_text = data_point[1]
-        question_ids = [self.word_to_ix[word] for word in question_text.split()]
-        head_id = self.entity2idx[data_point[0].strip()]
-        tail_ids = []
+        data_point = self.data[index] #data_point:['Honeydripper', 'NE directed_by', ['John Sayles']]
+        question_text = data_point[1] #question_text:'NE directed_by'
+        # question_ids = [self.word_to_ix[word] for word in question_text.split()] #问题是英文时候question_ids:[4, 99]
+        question_ids = [self.word_to_ix[word] for word in question_text] #问题是中文时候question_ids:[4, 99]
+        head_id = self.entity2idx[data_point[0].strip()] #head_id:13933
+        tail_ids = [] #tails_id:[16991]
         for tail_name in data_point[2]:
             tail_name = tail_name.strip()
             tail_ids.append(self.entity2idx[tail_name])
-        tail_onehot = self.toOneHot(tail_ids)
+        tail_onehot = self.toOneHot(tail_ids) #tail_onehot:43234
         return question_ids, head_id, tail_onehot 
 
 
