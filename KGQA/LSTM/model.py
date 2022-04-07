@@ -284,6 +284,7 @@ class RelationExtractor(nn.Module):
         return pred
     
     def forward(self, sentence, p_head, p_tail, question_len):
+
         embeds = self.word_embeddings(sentence)
         packed_output = pack_padded_sequence(embeds, question_len.cpu(), batch_first=True)
         outputs, (hidden, cell_state) = self.GRU(packed_output)

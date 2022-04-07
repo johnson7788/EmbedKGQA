@@ -85,13 +85,12 @@ def get_vocab(data):
 def preprocess_entities_relations(entity_dict, relation_dict, entities, relations):
     e = {}
     r = {}
-
     f = open(entity_dict, 'r')
-    for line in f:
+    for line in f:   # 每条数据格式: line: '1\t$9.99\n'
         line = line.strip().split('\t')
-        ent_id = int(line[0])
-        ent_name = line[1]
-        e[ent_name] = entities[ent_id]
+        ent_id = int(line[0])  # 获取实体id
+        ent_name = line[1]     #获取实体名称
+        e[ent_name] = entities[ent_id]  # 获取实体的嵌入向量, 维度 400
     f.close()
 
     f = open(relation_dict,'r')
@@ -197,7 +196,6 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     sent_len = a[1].to(device)   #1024
                     positive_head = a[2].to(device)  #1024
                     positive_tail = a[3].to(device)      #torch.Size([1024, 43234])
-
                     loss = model(sentence=question, p_head=positive_head, p_tail=positive_tail, question_len=sent_len)
                     loss.backward()
                     optimizer.step()

@@ -13,45 +13,68 @@ import numpy as np
 
 class DatasetMetaQA(Dataset):
     def __init__(self, data, word2ix, relations, entities, entity2idx):
-        self.data = data
-        self.relations = relations
-        self.entities = entities
-        self.word_to_ix = {}
-        self.entity2idx = entity2idx
+        self.data = data  # list, 208970条，训练数据数量， 每个数据的包含3个item，头实体，问句，答案实体列表
+        self.relations = relations # 关系的嵌入： list，长度18，代表关系的数量，每个关系的的维度是400
+        self.entities = entities   #实体的嵌入： list: 长度43234是实体的数量, 每个item是一个dict, 每个item是实体的对应的向量，每个实体的向量维度是400
+        self.word_to_ix = {}   #单词到id的映射， 117个，  dict
+        self.entity2idx = entity2idx  #实体到id的映射, dict , 43234个
         self.word_to_ix = word2ix
         self.pos_dict = defaultdict(list)
         self.neg_dict = defaultdict(list)
-        self.index_array = list(self.entities.keys())
+        self.index_array = list(self.entities.keys())   # 保存每个实体
 
 
     def __len__(self):
         return len(self.data)
 
     def toOneHot(self, indices):
-        indices = torch.LongTensor(indices)
-        batch_size = len(indices)
-        vec_len = len(self.entity2idx)
-        one_hot = torch.FloatTensor(vec_len)
-        one_hot.zero_()
-        one_hot.scatter_(0, indices, 1)
-        return one_hot
+        """
+        实体进行one_hot向量
+        :param indices: eg: [17281]
+        :type indices: list
+        :return:
+        :rtype:
+        """
+        indices = torch.LongTensor(indices) # 变成tensor, eg: tensor([37289])
+        batch_size = len(indices)   # 获取数量个数
+        vec_len = len(self.entity2idx)  #获取实体的总数量， eg: 43234
+        one_hot = torch.FloatTensor(vec_len)  # 初始一个向量，维度43234
+        one_hot.zero_()  # 全部变成0
+        one_hot.scatter_(0, indices, 1)  # 只把索引的位置变成1
+        return one_hot  # 维度是 43234， 43234是实体的数量
 
     def __getitem__(self, index):
-        data_point = self.data[index]
-        question_text = data_point[1]
-        question_ids = [self.word_to_ix[word] for word in question_text.split()]
-        head_id = self.entity2idx[data_point[0].strip()]
-        tail_ids = []
-        for tail_name in data_point[2]:
-            tail_name = tail_name.strip()
-            tail_ids.append(self.entity2idx[tail_name])
-        tail_onehot = self.toOneHot(tail_ids)
+        """
+        获取每条数据
+        :param index: 数据的索引, eg: 4586
+        :type index: int
+        :return:
+        :rtype:
+        """
+        data_point = self.data[index]  #获取一条数据，数据的包含3个item，头实体，问句，答案实体列表, eg: ['The Marsh', 'NE directed_by', ['Jordan Barker']]
+        question_text = data_point[1]   # 获取问题, eg: 'NE directed_by'
+        question_ids = [self.word_to_ix[word] for word in question_text.split()] # 问题变成id，eg: [4, 99]
+        head_id = self.entity2idx[data_point[0].strip()]  # 头实体变成id, eg: 33684
+        tail_ids = []  # 存储尾实体变成id， eg: [17281]
+        for tail_name in data_point[2]:  # 处理尾实体，即答案
+            tail_name = tail_name.strip()  # eg: 一个尾实体, 'Jordan Barker'
+            tail_ids.append(self.entity2idx[tail_name])   # 尾实体变成id
+        tail_onehot = self.toOneHot(tail_ids)  # 维度是 43234， 43234是实体的数量
         return question_ids, head_id, tail_onehot 
 
 
-
-
 def _collate_fn(batch):
+    """
+    处理一个批次的数据
+    :param batch: 每条数据的包含3个item，问题id， 头实体id，尾实体one_hot向量
+    eg:
+        0 = {list: 6} [0, 13, 12, 77, 15, 4]
+        1 = {int} 6836
+        2 = {Tensor: (43234,)} tensor([0., 0., 0.,  ..., 0., 0., 0.])
+    :type batch: 一个批次的数据, list , eg: 1024
+    :return:
+    :rtype:
+    """
     sorted_seq = sorted(batch, key=lambda sample: len(sample[0]), reverse=True)
     sorted_seq_lengths = [len(i[0]) for i in sorted_seq]
     longest_sample = sorted_seq_lengths[0]
