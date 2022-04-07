@@ -75,17 +75,22 @@ def _collate_fn(batch):
     :return:
     :rtype:
     """
+    # 按问题的长度进行排序, 从长到短排序
     sorted_seq = sorted(batch, key=lambda sample: len(sample[0]), reverse=True)
+    # 问题的长度列表, 个数是batch_size, eg: 1024
     sorted_seq_lengths = [len(i[0]) for i in sorted_seq]
+    # 找出最长的样本, 即第一个样本
     longest_sample = sorted_seq_lengths[0]
+    # minibatch_size ： 1024
     minibatch_size = len(batch)
     # print(minibatch_size)
     # aditay
     input_lengths = []
     p_head = []
     p_tail = []
+    #初始化一个全0向量，维度是 [batch_size, seq_len]
     inputs = torch.zeros(minibatch_size, longest_sample, dtype=torch.long)
-    for x in range(minibatch_size):
+    for x in range(minibatch_size): # 遍历每个样本
         # data_a = x[0]
         sample = sorted_seq[x][0]
         p_head.append(sorted_seq[x][1])

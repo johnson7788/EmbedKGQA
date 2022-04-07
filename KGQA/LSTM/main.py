@@ -54,13 +54,20 @@ args = parser.parse_args()
 
 
 def prepare_embeddings(embedding_dict):
+    """
+     生成 实体到id的映射的字典，id到实体映射的字典， 实体的嵌入向量的列表格式
+    :param embedding_dict:
+    :type embedding_dict:
+    :return: 实体到id的映射的字典，id到实体映射的字典， 实体的嵌入向量的列表格式
+    :rtype:
+    """
     entity2idx = {}
     idx2entity = {}
     i = 0
     embedding_matrix = []
-    for key, entity in embedding_dict.items():
-        entity2idx[key.strip()] = i
-        idx2entity[i] = key.strip()
+    for key, entity in embedding_dict.items():  # key代表每个实体, 例如：'$'，  entity代表每个实体的嵌入向量，400维度
+        entity2idx[key.strip()] = i  # 实体到id的映射, eg: {'$': 0}
+        idx2entity[i] = key.strip()  # id到实体的映射, eg: {0: '$'}
         i += 1
         embedding_matrix.append(entity)
     return entity2idx, idx2entity, embedding_matrix
@@ -87,19 +94,19 @@ def preprocess_entities_relations(entity_dict, relation_dict, entities, relation
     r = {}
     f = open(entity_dict, 'r')
     for line in f:   # 每条数据格式: line: '1\t$9.99\n'
-        line = line.strip().split('\t')
-        ent_id = int(line[0])  # 获取实体id
-        ent_name = line[1]     #获取实体名称
-        e[ent_name] = entities[ent_id]  # 获取实体的嵌入向量, 维度 400
+        line = line.strip().split('\t')  # ['1', '$9.99']
+        ent_id = int(line[0])  # 获取实体id， int
+        ent_name = line[1]     #获取实体名称, $9.99
+        e[ent_name] = entities[ent_id]  # 获取实体的嵌入向量, 维度 400, 实体名称：实体向量的字典格式
     f.close()
-
-    f = open(relation_dict,'r')
+    # e：43234个，代表实体的个数
+    f = open(relation_dict,'r')  #打开关系的嵌入
     for line in f:
-        line = line.strip().split('\t')
-        rel_id = int(line[0])
-        rel_name = line[1]
-        r[rel_name] = relations[rel_id]
-    f.close()
+        line = line.strip().split('\t')  #['0', 'directed_by']
+        rel_id = int(line[0])  #int， 关系的id, eg: 0
+        rel_name = line[1]  # 'directed_by'
+        r[rel_name] = relations[rel_id]  # 这个关系对应向量
+    f.close()   # 关系r, dict, 18个关系
     return e,r
 
 
@@ -155,16 +162,18 @@ def set_bn_eval(m):
 
 
 def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg_batch_size, batch_size, shuffle, num_workers, nb_epochs, embedding_dim, hidden_dim, relation_dim, gpu, use_cuda,patience, freeze, validate_every, num_hops, lr, entdrop, reldrop, scoredrop, l3_reg, model_name, decay, ls, w_matrix, bn_list, valid_data_path=None):
-    entities = np.load(entity_path)
-    relations = np.load(relation_path)
+    entities = np.load(entity_path)  #实体嵌入【实体个数，嵌入维度】 ,(43234, 400)
+    relations = np.load(relation_path)  #关系嵌入 (18, 400)， 【关系种类，嵌入维度】
+    # 返回e是实体对应的嵌入，字典格式， r是关系对应的嵌入，字典格式,
     e,r = preprocess_entities_relations(entity_dict, relation_dict, entities, relations)
+    # 实体到id的映射的字典，id到实体映射的字典， 实体的嵌入向量的列表格式
     entity2idx, idx2entity, embedding_matrix = prepare_embeddings(e)
+    # 处理数据，
     data = process_text_file(data_path, split=False)
     # data = pickle.load(open(data_path, 'rb'))
     word2ix,idx2word, max_len = get_vocab(data)
     hops = str(num_hops)
     # print(idx2word)
-    # aditay
     # print(idx2word.keys())
     device = torch.device(gpu if use_cuda else "cpu")
     dataset = DatasetMetaQA(data=data, word2ix=word2ix, relations=r, entities=e, entity2idx=entity2idx)
@@ -241,6 +250,15 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     
 
 def process_text_file(text_file, split=False):
+    """
+
+    :param text_file: '../../data/QA_data/MetaQA/qa_train_1hop.txt'
+    :type text_file:
+    :param split:
+    :type split:
+    :return:
+    :rtype:
+    """
     data_file = open(text_file, 'r')
     data_array = []
     for data_line in data_file.readlines():
