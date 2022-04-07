@@ -73,6 +73,13 @@ def prepare_embeddings(embedding_dict):
     return entity2idx, idx2entity, embedding_matrix
 
 def get_vocab(data):
+    """
+    对问题进行处理，获取单词到id， id到单词的映射字典，最大长度
+    :param data:
+    :type data:
+    :return:
+    :rtype:
+    """
     word_to_ix = {}
     maxLength = 0
     idx2word = {}
@@ -162,15 +169,81 @@ def set_bn_eval(m):
 
 
 def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg_batch_size, batch_size, shuffle, num_workers, nb_epochs, embedding_dim, hidden_dim, relation_dim, gpu, use_cuda,patience, freeze, validate_every, num_hops, lr, entdrop, reldrop, scoredrop, l3_reg, model_name, decay, ls, w_matrix, bn_list, valid_data_path=None):
+    """
+
+    :param data_path:  '../../data/QA_data/MetaQA/qa_train_1hop.txt'
+    :type data_path:  训练数据路径
+    :param entity_path:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/E.npy'
+    :type entity_path:  训练好的实体嵌入路径
+    :param relation_path:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/R.npy'
+    :type relation_path: 训练好的关系嵌入路径
+    :param entity_dict:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/entities.dict'
+    :type entity_dict:  实体id和实体的映射
+    :param relation_dict: '../../pretrained_models/embeddings/ComplEx_MetaQA_full/relations.dict'
+    :type relation_dict: 关系id和关系的映射
+    :param neg_batch_size:  128
+    :type neg_batch_size: int， 负样本的batch_size
+    :param batch_size:  1024
+    :type batch_size: int, 训练样本的batch_size
+    :param shuffle:
+    :type shuffle:
+    :param num_workers:
+    :type num_workers:
+    :param nb_epochs:
+    :type nb_epochs:
+    :param embedding_dim:
+    :type embedding_dim:
+    :param hidden_dim:
+    :type hidden_dim:
+    :param relation_dim:
+    :type relation_dim:
+    :param gpu:
+    :type gpu:
+    :param use_cuda:
+    :type use_cuda:
+    :param patience:
+    :type patience:
+    :param freeze:
+    :type freeze:
+    :param validate_every:
+    :type validate_every:
+    :param num_hops:
+    :type num_hops:
+    :param lr:
+    :type lr:
+    :param entdrop:
+    :type entdrop:
+    :param reldrop:
+    :type reldrop:
+    :param scoredrop:
+    :type scoredrop:
+    :param l3_reg:
+    :type l3_reg:
+    :param model_name:
+    :type model_name:
+    :param decay:
+    :type decay:
+    :param ls:
+    :type ls:
+    :param w_matrix:
+    :type w_matrix:
+    :param bn_list:
+    :type bn_list:
+    :param valid_data_path:
+    :type valid_data_path:
+    :return:
+    :rtype:
+    """
     entities = np.load(entity_path)  #实体嵌入【实体个数，嵌入维度】 ,(43234, 400)
     relations = np.load(relation_path)  #关系嵌入 (18, 400)， 【关系种类，嵌入维度】
     # 返回e是实体对应的嵌入，字典格式， r是关系对应的嵌入，字典格式,
     e,r = preprocess_entities_relations(entity_dict, relation_dict, entities, relations)
     # 实体到id的映射的字典，id到实体映射的字典， 实体的嵌入向量的列表格式
     entity2idx, idx2entity, embedding_matrix = prepare_embeddings(e)
-    # 处理数据，
+    # 处理数据，data， list，  是【头实体，问题，答案列表】的格式，如果split是FALSE., 这里是208970条训练数据
     data = process_text_file(data_path, split=False)
     # data = pickle.load(open(data_path, 'rb'))
+    # 对问题进行处理，获取单词到id， id到单词的映射字典，最大长度
     word2ix,idx2word, max_len = get_vocab(data)
     hops = str(num_hops)
     # print(idx2word)
@@ -251,29 +324,29 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
 
 def process_text_file(text_file, split=False):
     """
-
+    获取训练数据，【头实体，问题，答案列表】的格式，如果split是FALSE， 如果是True，变成【头实体，问题，答案]的格式
     :param text_file: '../../data/QA_data/MetaQA/qa_train_1hop.txt'
     :type text_file:
-    :param split:
+    :param split: 如果分割，那么每个答案变成由列表变成单个字符
     :type split:
     :return:
     :rtype:
     """
     data_file = open(text_file, 'r')
     data_array = []
-    for data_line in data_file.readlines():
+    for data_line in data_file.readlines():  # 读取训练集的每一行
         data_line = data_line.strip()
         if data_line == '':
             continue
-        data_line = data_line.strip().split('\t')
+        data_line = data_line.strip().split('\t')  #
         question = data_line[0].split('[')
-        question_1 = question[0]
-        question_2 = question[1].split(']')
-        head = question_2[0].strip()
-        question_2 = question_2[1]
-        question = question_1+'NE'+question_2
-        ans = data_line[1].split('|')
-        data_array.append([head, question.strip(), ans])
+        question_1 = question[0]  # 问题的前半部分
+        question_2 = question[1].split(']')  #问题对应的实体
+        head = question_2[0].strip()  #问题对应的实体
+        question_2 = question_2[1]  # 问题的后半部分
+        question = question_1+'NE'+question_2  #问题变成NE连接， 'what movies are about NE'
+        ans = data_line[1].split('|')  #答案变成列表格式:['Top Hat', 'Kitty Foyle', 'The Barkleys of Broadway']
+        data_array.append([head, question.strip(), ans])  # 一条数据变成【头实体，问题，答案列表】的格式
     if split==False:
         return data_array
     else:
