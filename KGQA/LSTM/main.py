@@ -22,7 +22,7 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--hops', type=str, default='1')
-parser.add_argument('--ls', type=float, default=0.0)
+parser.add_argument('--ls', type=float, default=0.0, help='label_smoothing的值')
 parser.add_argument('--validate_every', type=int, default=5)
 parser.add_argument('--model', type=str, default='ComplEx')
 parser.add_argument('--kg_type', type=str, default='full',help="可以选择half，或者full")
@@ -30,23 +30,23 @@ parser.add_argument('--kg_type', type=str, default='full',help="可以选择half
 parser.add_argument('--mode', type=str, default='eval', help='train 还是eval，不同的模式')
 parser.add_argument('--batch_size', type=int, default=1024)
 parser.add_argument('--dropout', type=float, default=0.1)
-parser.add_argument('--entdrop', type=float, default=0.0)
-parser.add_argument('--reldrop', type=float, default=0.0)
+parser.add_argument('--entdrop', type=float, default=0.0, help='实体的dropout值')
+parser.add_argument('--reldrop', type=float, default=0.0, help='关系的dropout值')
 parser.add_argument('--scoredrop', type=float, default=0.0)
 parser.add_argument('--l3_reg', type=float, default=0.0)
-parser.add_argument('--decay', type=float, default=1.0)
+parser.add_argument('--decay', type=float, default=1.0, help='学习率decay')
 parser.add_argument('--shuffle_data', type=bool, default=True)
 parser.add_argument('--num_workers', type=int, default=0, help='修改成0，或其它数字')
-parser.add_argument('--lr', type=float, default=0.0001)
-parser.add_argument('--nb_epochs', type=int, default=90)
-parser.add_argument('--gpu', type=int, default=0)
+parser.add_argument('--lr', type=float, default=0.0001, help="学习率")
+parser.add_argument('--nb_epochs', type=int, default=90, help='训练的批次')
+parser.add_argument('--gpu', type=int, default=0, help='如果使用GPU，那么使用第几个GPU')
 parser.add_argument('--neg_batch_size', type=int, default=128)
 parser.add_argument('--hidden_dim', type=int, default=200)
-parser.add_argument('--embedding_dim', type=int, default=256)
+parser.add_argument('--embedding_dim', type=int, default=256, help='嵌入的维度, 问题词的嵌入的维度')
 parser.add_argument('--relation_dim', type=int, default=200, help='注意，这里要和训练embedding时保持一致')
 parser.add_argument('--use_cuda', type=bool, default=False, help='是否使用GPU')
 parser.add_argument('--patience', type=int, default=5, help='验证集多少次不更新最好指标后，那么就停止训练')
-parser.add_argument('--freeze', type=str2bool, default=True, help="是否冻结预训练的Embedding的参数")
+parser.add_argument('--freeze', type=str2bool, default=True, help="是否冻结预训练的实体Embedding的参数")
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5,6,7"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
@@ -97,6 +97,19 @@ def get_vocab(data):
     return word_to_ix, idx2word, maxLength
 
 def preprocess_entities_relations(entity_dict, relation_dict, entities, relations):
+    """
+    获取实体的嵌入向量和关系的嵌入向量的字典
+    :param entity_dict: '../../pretrained_models/embeddings/ComplEx_MetaQA_full/entities.dict'
+    :type entity_dict:
+    :param relation_dict:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/relations.dict'
+    :type relation_dict:
+    :param entities: (43234, 400) 实体嵌入矩阵
+    :type entities:
+    :param relations:  (18, 400)  关系嵌入矩阵
+    :type relations:
+    :return:
+    :rtype:
+    """
     e = {}
     r = {}
     f = open(entity_dict, 'r')
@@ -185,51 +198,51 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
     :type neg_batch_size: int， 负样本的batch_size
     :param batch_size:  1024
     :type batch_size: int, 训练样本的batch_size
-    :param shuffle:
-    :type shuffle:
-    :param num_workers:
+    :param shuffle: True, 是否对数据进行打乱
+    :type shuffle: bool
+    :param num_workers: 数据读取的并发数量, int
     :type num_workers:
-    :param nb_epochs:
-    :type nb_epochs:
-    :param embedding_dim:
-    :type embedding_dim:
-    :param hidden_dim:
-    :type hidden_dim:
-    :param relation_dim:
-    :type relation_dim:
-    :param gpu:
+    :param nb_epochs: 训练批次
+    :type nb_epochs: int
+    :param embedding_dim: 256， 嵌入的维度, 问题词的嵌入的维度
+    :type embedding_dim: int
+    :param hidden_dim: 200
+    :type hidden_dim: int
+    :param relation_dim: 200
+    :type relation_dim: int
+    :param gpu: 0, 如果使用GPU，使用第几个GPU
     :type gpu:
-    :param use_cuda:
+    :param use_cuda: False表示不使用gpu
     :type use_cuda:
-    :param patience:
+    :param patience: 5， 训练指标多少个epoch不更新，就退出训练
     :type patience:
-    :param freeze:
+    :param freeze: True，是否冻结embedding参数
     :type freeze:
-    :param validate_every:
-    :type validate_every:
-    :param num_hops:
+    :param validate_every: 5， 多少个epoch验证一次
+    :type validate_every: int
+    :param num_hops: str: '1', 跳数
     :type num_hops:
-    :param lr:
+    :param lr: 学习率, 0.0001
     :type lr:
-    :param entdrop:
+    :param entdrop: 0.0
     :type entdrop:
-    :param reldrop:
+    :param reldrop: 0.0
     :type reldrop:
-    :param scoredrop:
+    :param scoredrop: 0.0
     :type scoredrop:
-    :param l3_reg:
+    :param l3_reg: 0.0
     :type l3_reg:
-    :param model_name:
+    :param model_name:  'ComplEx'
     :type model_name:
-    :param decay:
+    :param decay: 1.0, 优化器的decay
     :type decay:
-    :param ls:
+    :param ls: 0.0， label_smoothing
     :type ls:
-    :param w_matrix:
+    :param w_matrix:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/W.npy'
     :type w_matrix:
-    :param bn_list:
+    :param bn_list:  batch_normalization的向量 [{'weight': array([0.9646007, 0.9430085], dtype=float32), 'bias': array([ 0.1147557 , -0.09948011], dtype=float32), 'running_mean': array([ 0.046767  , -0.05102218], dtype=float32), 'running_var': array([0.00692407, 0.00702443], dtype=float32)}, {'weight': array([1., 1.], dtype=float32), 'bias': array([0., 0.], dtype=float32), 'running_mean': array([0., 0.], dtype=float32), 'running_var': array([1., 1.], dtype=float32)}, {'weight': array([0.71846   , 0.68144286], dtype=float32), 'bias': array([-0.5668318,  0.5821315], dtype=float32), 'running_mean': array([ 0.00204753, -0.00344366], dtype=float32), 'running_var': array([0.02376127, 0.023404  ], dtype=float32)}]
     :type bn_list:
-    :param valid_data_path:
+    :param valid_data_path:  '../../data/QA_data/MetaQA/qa_dev_1hop.txt'
     :type valid_data_path:
     :return:
     :rtype:
@@ -245,16 +258,23 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
     # data = pickle.load(open(data_path, 'rb'))
     # 对问题进行处理，获取单词到id， id到单词的映射字典，最大长度
     word2ix,idx2word, max_len = get_vocab(data)
+    # eg: '1'
     hops = str(num_hops)
     # print(idx2word)
     # print(idx2word.keys())
+    # eg: cpu
     device = torch.device(gpu if use_cuda else "cpu")
+    # 初始化数据集
     dataset = DatasetMetaQA(data=data, word2ix=word2ix, relations=r, entities=e, entity2idx=entity2idx)
+    # 初始化dataloader, batch_size: 1024
     data_loader = DataLoaderMetaQA(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    # 初始化模型， embedding_dim： 256， hidden_dim： 200，vocab_size：117， 一共117个单词，问题的单词数量
     model = RelationExtractor(embedding_dim=embedding_dim, hidden_dim=hidden_dim, vocab_size=len(word2ix), num_entities = len(idx2entity), relation_dim=relation_dim, pretrained_embeddings=embedding_matrix, freeze=freeze, device=device, entdrop = entdrop, reldrop = reldrop, scoredrop = scoredrop, l3_reg = l3_reg, model = model_name, ls = ls, w_matrix = w_matrix, bn_list=bn_list)
     model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+
     scheduler = ExponentialLR(optimizer, decay)
+
     optimizer.zero_grad()
     best_score = -float("inf")
     best_model = model.state_dict()
@@ -268,16 +288,17 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
             if phase == 'train':
                 model.train()
                 if freeze == True:
-                    # print('Freezing batch norm layers')
+                    print('如果冻结实体的嵌入参数，那么对应的BN的参数也需要冻结')
                     model.apply(set_bn_eval)
                 loader = tqdm(data_loader, total=len(data_loader), unit="batches")
                 running_loss = 0
                 for i_batch, a in enumerate(loader):
                     model.zero_grad()
-                    question = a[0].to(device)   #torch.Size([1024, 11])  [batch_size,??]
-                    sent_len = a[1].to(device)   #1024
-                    positive_head = a[2].to(device)  #1024
-                    positive_tail = a[3].to(device)      #torch.Size([1024, 43234])
+                    # i_batch返回4个值： 分别是：问题的向量，维度是[batch_size, batch_max_seq_len],  问题的长度：[batch_size]， 问题中头实体的id, [batch_size],  答案尾实体的向量[batch_size, num_entities]
+                    question = a[0].to(device)   #问题的向量，torch.Size([1024, 11])  [batch_size, batch_max_seq_len]
+                    sent_len = a[1].to(device)   #问题的长度：[batch_size]
+                    positive_head = a[2].to(device)  #问题中头实体的id, [batch_size]
+                    positive_tail = a[3].to(device)      #torch.Size([1024, 43234]), 答案尾实体的向量[batch_size, num_entities]
                     loss = model(sentence=question, p_head=positive_head, p_tail=positive_tail, question_len=sent_len)
                     loss.backward()
                     optimizer.step()

@@ -84,24 +84,24 @@ def _collate_fn(batch):
     # minibatch_size ： 1024
     minibatch_size = len(batch)
     # print(minibatch_size)
-    # aditay
+
     input_lengths = []
     p_head = []
     p_tail = []
     #初始化一个全0向量，维度是 [batch_size, seq_len]
     inputs = torch.zeros(minibatch_size, longest_sample, dtype=torch.long)
     for x in range(minibatch_size): # 遍历每个样本
-        # data_a = x[0]
+        # 问题的变成id的列表， eg: [6, 30, 31, 19, 32, 33, 34, 0, 4, 18, 3]
         sample = sorted_seq[x][0]
-        p_head.append(sorted_seq[x][1])
-        tail_onehot = sorted_seq[x][2]
+        p_head.append(sorted_seq[x][1])  # 头实体变id, eg: p_head: [31021]
+        tail_onehot = sorted_seq[x][2]  # 尾实体的one_host 向量, 维度 43234
         p_tail.append(tail_onehot)
-        seq_len = len(sample)
-        input_lengths.append(seq_len)
-        sample = torch.tensor(sample, dtype=torch.long)
+        seq_len = len(sample)   #问题的长度
+        input_lengths.append(seq_len)  # 长度列表
+        sample = torch.tensor(sample, dtype=torch.long)  # 变成tensor格式
         sample = sample.view(sample.shape[0])
-        inputs[x].narrow(0,0,seq_len).copy_(sample)
-
+        inputs[x].narrow(0,0,seq_len).copy_(sample)  # 把向量拷贝到inputs中
+    # 返回inputs： 问题的向量，维度是[batch_size, batch_max_seq_len],  问题的长度：[batch_size]， 问题中头实体的id, [batch_size],  答案尾实体的向量[batch_size, num_entities]
     return inputs, torch.tensor(input_lengths, dtype=torch.long), torch.tensor(p_head, dtype=torch.long), torch.stack(p_tail)
 
 class DataLoaderMetaQA(DataLoader):

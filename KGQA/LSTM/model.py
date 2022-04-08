@@ -14,38 +14,38 @@ class RelationExtractor(nn.Module):
     def __init__(self, embedding_dim, hidden_dim, vocab_size, relation_dim, num_entities, pretrained_embeddings, device, entdrop, reldrop, scoredrop, l3_reg, model, ls, w_matrix, bn_list, freeze=True):
         """
 
-        :param embedding_dim:
+        :param embedding_dim:  256： 嵌入的维度, 问题词的嵌入的维度
         :type embedding_dim:
-        :param hidden_dim:
+        :param hidden_dim: 200
         :type hidden_dim:
-        :param vocab_size:
+        :param vocab_size: 117， 所有的问题的单词的数量
         :type vocab_size:
-        :param relation_dim:
+        :param relation_dim:  200， 关系的维度
         :type relation_dim:
-        :param num_entities:
+        :param num_entities:  43234， 实体的数量
         :type num_entities:
-        :param pretrained_embeddings:
+        :param pretrained_embeddings: list， 43234， 每个实体的嵌入向量
         :type pretrained_embeddings:
-        :param device:
+        :param device: cpu， 训练设备
         :type device:
-        :param entdrop:
+        :param entdrop: 0.0
         :type entdrop:
-        :param reldrop:
+        :param reldrop: 0.0
         :type reldrop:
-        :param scoredrop:
+        :param scoredrop: 0.0
         :type scoredrop:
-        :param l3_reg:
+        :param l3_reg: 0.0
         :type l3_reg:
-        :param model:
+        :param model: 'ComplEx'
         :type model:
-        :param ls:
+        :param ls: 0.0， label_smoothing值
         :type ls:
-        :param w_matrix:
+        :param w_matrix:  '../../pretrained_models/embeddings/ComplEx_MetaQA_full/W.npy'
         :type w_matrix:
         :param bn_list:  批归一化的模型参数
         :type bn_list:  dict
-        :param freeze:
-        :type freeze:
+        :param freeze: True
+        :type freeze: bool
         """
         super(RelationExtractor, self).__init__()
         self.device = device
@@ -82,11 +82,12 @@ class RelationExtractor(nn.Module):
         else:
             print('Incorrect model specified:', self.model)
             exit(0)
-        print('Model is', self.model)
+        print('选用的模型是: ', self.model)
         self.hidden_dim = hidden_dim
         self.relation_dim = relation_dim * multiplier
         if self.model == 'RESCAL':
             self.relation_dim = relation_dim * relation_dim
+        # 嵌入的维度, 问题词的嵌入的维度
         self.word_embeddings = nn.Embedding(vocab_size, embedding_dim)
         self.n_layers = 1
         self.bidirectional = True
@@ -99,10 +100,9 @@ class RelationExtractor(nn.Module):
         self.ent_dropout = torch.nn.Dropout(entdrop)
         self.score_dropout = torch.nn.Dropout(scoredrop)
 
-        # The LSTM takes word embeddings as inputs, and outputs hidden states
-        # with dimensionality hidden_dim.
+        # LSTM将单词嵌入作为输入，并输出维度为hidden_dim的隐藏状态。
         self.pretrained_embeddings = pretrained_embeddings
-        print('冻结预训练的Embedding的参数:', self.freeze)
+        print('冻结预训练的实体Embedding的参数:', self.freeze)
         self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
         # self.embedding = nn.Embedding(self.num_entities, self.relation_dim)
         # xavier_normal_(self.embedding.weight.data)
@@ -112,7 +112,7 @@ class RelationExtractor(nn.Module):
 
         self.lin1 = nn.Linear(hidden_dim * 2, self.mid1, bias=False)
         self.lin2 = nn.Linear(self.mid1, self.mid2, bias=False)
-        xavier_normal_(self.lin1.weight.data)
+        xavier_normal_(self.lin1.weight.data)   # 使用xavier方式初始化权重
         xavier_normal_(self.lin2.weight.data)
         self.hidden2rel = nn.Linear(self.mid2, self.relation_dim)
         self.hidden2rel_base = nn.Linear(hidden_dim * 2, self.relation_dim)
@@ -123,7 +123,10 @@ class RelationExtractor(nn.Module):
         else:
             self.bn0 = torch.nn.BatchNorm1d(multiplier)
             self.bn2 = torch.nn.BatchNorm1d(multiplier)
-
+        # bn_list:bn_list
+        #  0 = {dict: 4} {'weight': tensor([0.9646, 0.9430]), 'bias': tensor([ 0.1148, -0.0995]), 'running_mean': array([ 0.046767  , -0.05102218], dtype=float32), 'running_var': array([0.00692407, 0.00702443], dtype=float32)}
+        #  1 = {dict: 4} {'weight': array([1., 1.], dtype=float32), 'bias': array([0., 0.], dtype=float32), 'running_mean': array([0., 0.], dtype=float32), 'running_var': array([1., 1.], dtype=float32)}
+        #  2 = {dict: 4} {'weight': array([0.71846   , 0.68144286], dtype=float32), 'bias': array([-0.5668318,  0.5821315], dtype=float32), 'running_mean': array([ 0.00204753, -0.00344366], dtype=float32), 'running_var': array([0.02376127, 0.023404  ], dtype=float32)}
         for i in range(3):
             for key, value in self.bn_list[i].items():
                 self.bn_list[i][key] = torch.Tensor(value).to(device)
@@ -144,11 +147,14 @@ class RelationExtractor(nn.Module):
         
 
     def applyNonLinear(self, outputs):
+        # [batch_size, hidden_dim] --> [batch_size, 256]
         outputs = self.lin1(outputs)  #Linear(in_features=400, out_features=256, bias=False)
         outputs = F.relu(outputs)
+        # [batch_size, 256] --> [batch_size, 256]
         outputs = self.lin2(outputs)  #Linear(in_features=256, out_features=256, bias=False)
         outputs = F.relu(outputs)
-        outputs = self.hidden2rel(outputs)   #Linear(in_features=256, out_features=60, bias=True)
+        # [batch_size, 256] --> [batch_size, rel_hidden] [1024, 400]
+        outputs = self.hidden2rel(outputs)   #Linear(in_features=256, out_features=400, bias=True)
         # outputs = self.hidden2rel_base(outputs)
         return outputs
 
@@ -210,28 +216,52 @@ class RelationExtractor(nn.Module):
         return pred
 
     def ComplEx(self, head, relation):
-        head = torch.stack(list(torch.chunk(head, 2, dim=1)), dim=1)
+        """
+
+        :param head: torch.Size([1024, 400])，  头实体的嵌入向量
+        :type head:
+        :param relation:  torch.Size([1024, 400])， 句子的高阶特征作为关系的表示
+        :type relation:
+        :return:
+        :rtype:
+        """
+        # [1024, 400]--> tuple,2个元素，把head的按照维度1进程拆分成2个矩阵, 每个的形状是torch.Size([1024, 200])
+        head_chunk = torch.chunk(head, 2, dim=1)
+        # 拼接到一起,  2个[1024, 400]的矩阵在维度1上拼接后，得到 torch.Size([1024, 2, 200])
+        head = torch.stack(list(head_chunk), dim=1)
+        # 进行一次batch_normalization
         head = self.bn0(head)
+        # 进行一次dropout
         head = self.ent_dropout(head)
+        #
         relation = self.rel_dropout(relation)
+        #交换batch_size的维度:  torch.Size([1024, 2, 200]) -- > torch.Size([2, 1024, 200])
         head = head.permute(1, 0, 2)
+        # 然后拆成2部分， re_head 和im_head : torch.Size([1024, 200])
         re_head = head[0]
         im_head = head[1]
-
+        # 关系的和头实体的一样进行处理, re_relation, im_relation: torch.Size([1024, 200])
         re_relation, im_relation = torch.chunk(relation, 2, dim=1)
-        re_tail, im_tail = torch.chunk(self.embedding.weight, 2, dim =1)
-
+        # 对关系和实体分词2部分进行交互
+        # re_score: torch.Size([1024, 200])   << re_head: [1024, 200] * re_relation: : [1024, 200] --> torch.Size([1024, 200]), im_head: [1024, 200] * im_relation: : [1024, 200] --> torch.Size([1024, 200])
         re_score = re_head * re_relation - im_head * im_relation
+        #  im_score: torch.Size([1024, 200])
         im_score = re_head * im_relation + im_head * re_relation
-
+        # 2个[1024, 200]，在维度1上拼接， torch.Size([1024, 2, 200])
         score = torch.stack([re_score, im_score], dim=1)
-        score = self.bn2(score)
+        score = self.bn2(score)  # torch.Size([1024, 2, 200])
         score = self.score_dropout(score)
+        #和batch_size: torch.Size([2, 1024, 200])
         score = score.permute(1, 0, 2)
-
+        # re_score： torch.Size([1024, 200])， im_score: torch.Size([1024, 200])
         re_score = score[0]
         im_score = score[1]
+        #
+        # 对实体嵌入也进行拆分， re_tail:im_tail: torch.Size([43234, 200])
+        re_tail, im_tail = torch.chunk(self.embedding.weight, 2, dim =1)
+        # 矩阵乘法  torch.mm(re_score, re_tail.transpose(1,0))--> torch.Size([1024, 43234]), 最终分数： torch.Size([1024, 43234])
         score = torch.mm(re_score, re_tail.transpose(1,0)) + torch.mm(im_score, im_tail.transpose(1,0))
+        # 进行一次sigmoid, [batch_size, entities_num]
         pred = torch.sigmoid(score)
         return pred
 
@@ -286,29 +316,38 @@ class RelationExtractor(nn.Module):
     def forward(self, sentence, p_head, p_tail, question_len):
         """
 
-        :param sentence:
+        :param sentence:  问题的向量，torch.Size([1024, 11])  [batch_size, batch_max_seq_len]
         :type sentence:
-        :param p_head:
+        :param p_head:  问题中头实体的id, [batch_size]
         :type p_head:
-        :param p_tail:
+        :param p_tail:  torch.Size([1024, 43234]), 答案尾实体的向量[batch_size, num_entities]
         :type p_tail:
-        :param question_len:
+        :param question_len: 问题的长度：[batch_size]
         :type question_len:
         :return:
         :rtype:
         """
+        # torch.Size([1024, 11]) -->torch.Size([1024, 11, 256]),  [batch_size, batch_max_seq_len]-->  [batch_size, batch_max_seq_len, embedding_dim]
         embeds = self.word_embeddings(sentence)
+        # 将一个填充过的变长序列压紧, question_len,问题的长度：[batch_size], embeds, [batch_size, batch_max_seq_len, embedding_dim]
         packed_output = pack_padded_sequence(embeds, question_len.cpu(), batch_first=True)
+        #  hidden: torch.Size([2, 1024, 200]), cell_state： torch.Size([2, 1024, 200]), [bidirectional, batch_first, hidden_embedding]
         outputs, (hidden, cell_state) = self.GRU(packed_output)
+        # ???
         outputs, outputs_length = pad_packed_sequence(outputs, batch_first=True)
+        # 拼接双向的输出, torch.Size([2, 1024, 200]) -->torch.Size([1024, 400]), [batch_size, hidden_dim*2]
         outputs = torch.cat([hidden[0,:,:], hidden[1,:,:]], dim=-1)
+
         # outputs = self.drop1(outputs)
         # rel_embedding = self.hidden2rel(outputs)
+        # [1024,400] --> [1024,400], 对问题进行非线性处理后，得到一个高阶特征
         rel_embedding = self.applyNonLinear(outputs)
+        # 头实体 [1024] -->torch.Size([1024, 400]) ,
         p_head = self.embedding(p_head)
+        # 头实体和问题之间进行交互注意力， pred: [batch_size, entities_num]
         pred = self.getScores(p_head, rel_embedding)
         actual = p_tail
-        if self.label_smoothing:
+        if self.label_smoothing:  # 标签平滑策略，
             actual = ((1.0-self.label_smoothing)*actual) + (1.0/actual.size(1)) 
         loss = self.loss(pred, actual)
         # reg = -0.001
