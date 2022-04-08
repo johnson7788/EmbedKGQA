@@ -315,7 +315,7 @@ class RelationExtractor(nn.Module):
     
     def forward(self, sentence, p_head, p_tail, question_len):
         """
-
+        前向传播
         :param sentence:  问题的向量，torch.Size([1024, 11])  [batch_size, batch_max_seq_len]
         :type sentence:
         :param p_head:  问题中头实体的id, [batch_size]
