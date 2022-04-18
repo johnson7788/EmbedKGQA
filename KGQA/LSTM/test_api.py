@@ -41,6 +41,7 @@ class LSTMKQGATestCase(unittest.TestCase):
         what does [Helen Mack] star in	The Son of Kong|Kiss and Make-Up|Divorce
         测试接口
         :return:
+        ['问题是:what does Grégoire Colin appear in, 答案是: Before the Rain', '问题是:NE appears in which movies, 答案是: The Inbetweeners Movie', '问题是:what films did Michelle Trachtenberg star in, 答案是: Harriet the Spy', '问题是:what does Helen Mack star in, 答案是: The Son of Kong', '问题是:what films did Shahid Kapoor act in, 答案是: Haider']
         :rtype:
         """
         url = f"{self.host_server}/api/predict"
