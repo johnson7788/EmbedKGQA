@@ -6,6 +6,8 @@
 # @Desc  :  预测接口
 
 import os
+
+import self as self
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -31,9 +33,6 @@ app = Flask(__name__)
 class LSTMKQGA():
     def __init__(self, model_name="ComplEx", embedding_folder="../../pretrained_models/embeddings/ComplEx_MetaQA_full/"):
         """
-
-        :param hops:  1跳的问题的模型
-        :type hops:
         :param model_name: 使用的哪个模型
         """
         self.embedding_dim = 256
@@ -59,6 +58,7 @@ class LSTMKQGA():
         # 实体到id的映射的字典，id到实体映射的字典， 实体的嵌入向量的列表格式
         entity2idx, idx2entity, embedding_matrix = self.prepare_embeddings(e)
         self.entity2idx = entity2idx
+        self.idx2entity = idx2entity
         # 处理数据，data， list，  是【头实体，问题，答案列表】的格式，如果split是FALSE., 这里是208970条训练数据
         data = self.process_text_file(train_data_path)
         # 对问题进行处理，获取单词到id， id到单词的映射字典，最大长度
@@ -186,7 +186,7 @@ class LSTMKQGA():
         """
         data = self.process_text_file(test_data_path)
         answers = self.predict(data)
-        print(answers)
+        return answers
 
     def predict(self, data):
         """
@@ -197,12 +197,13 @@ class LSTMKQGA():
         :rtype:
         """
         answers = []
-        data_gen = self.data_generator(data=data, word2ix=self.word2idx, entity2idx=self.entity2idx)
-        for i in tqdm(range(len(data)), desc="模型评估中"):
-            d = next(data_gen)
+        list_data = self.data_generator(data=data, word2ix=self.word2idx, entity2idx=self.entity2idx)
+        # list_data： 返回的处理后的数据
+        for d in tqdm(list_data, desc="模型预测中"):
             head = d[0].to(self.device)
             question = d[1].to(self.device)
-            ques_len = d[3].unsqueeze(0)
+            # 问题的长度
+            ques_len = d[2].unsqueeze(0)
             top_2 = self.model.get_score_ranked(head=head, sentence=question, sent_len=ques_len)
             top_2_idx = top_2[1].tolist()[0]
             head_idx = head.tolist()
@@ -210,25 +211,27 @@ class LSTMKQGA():
                 pred_ans = top_2_idx[1]
             else:
                 pred_ans = top_2_idx[0]
-            q_text = d[-1]
-            answers.append(q_text + '\t' + str(pred_ans) + '\t')
+
+            answer_text = self.idx2entity[pred_ans]
+            #问题
+            question_text = d[-1]
+            # 问题的头实体
+            qestion_head = d[-2]
+            # 替换 NE 为问题的头实体
+            quesiton = question_text.replace(' NE ', f" {qestion_head} ")
+            answers.append(f"问题是:{quesiton}, 答案是: {answer_text}")
         return answers
 
     def data_generator(self,data, word2ix, entity2idx):
+        list_data = []
         for i in range(len(data)):
             data_sample = data[i]
             head = entity2idx[data_sample[0].strip()]
             question = data_sample[1].strip().split(' ')
             encoded_question = [word2ix[word.strip()] for word in question]
-            if type(data_sample[2]) is str:
-                ans = entity2idx[data_sample[2]]
-            else:
-                ans = [entity2idx[entity.strip()] for entity in list(data_sample[2])]
-
-            yield torch.tensor(head, dtype=torch.long), torch.tensor(encoded_question,
-                                                                     dtype=torch.long), ans, torch.tensor(
-                len(encoded_question), dtype=torch.long), data_sample[1]
-
+            one_data = [torch.tensor(head, dtype=torch.long), torch.tensor(encoded_question,dtype=torch.long), torch.tensor(len(encoded_question), dtype=torch.long), data_sample[0],data_sample[1]]
+            list_data.append(one_data)
+        return list_data
 @app.route("/api/predict_file", methods=['POST'])
 def predict_file():
     """
@@ -239,6 +242,22 @@ def predict_file():
     jsonres = request.get_json()
     test_data_path = jsonres.get('data_apth', None)
     results = model.predict_from_file()
+    logger.info(f"预测的结果是:{results}")
+    return jsonify(results)
+
+@app.route("/api/predict", methods=['POST'])
+def predict():
+    """
+    预测测试
+    :return:
+    :rtype:
+    """
+    jsonres = request.get_json()
+    # data的格式
+    data = jsonres.get('data', None)
+    if data is None:
+        return f"数据的参数data不能为空，是列表格式"
+    results = model.predict(data)
     logger.info(f"预测的结果是:{results}")
     return jsonify(results)
 
