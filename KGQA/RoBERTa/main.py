@@ -56,11 +56,12 @@ parser.add_argument('--use_cuda', type=bool, default=True)
 parser.add_argument('--patience', type=int, default=5)
 parser.add_argument('--freeze', type=str2bool, default=True)
 parser.add_argument('--do_batch_norm', type=str2bool, default=True)
+parser.add_argument('--datasetname', type=str, default="fbwq", help="选择使用哪个数据集，默认fbwq,也可以是MetaQA")
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5,6,7"
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 args = parser.parse_args()
-
+datasetname = args.datasetname
 
 def prepare_embeddings(embedding_dict):
     entity2idx = {}
@@ -278,9 +279,9 @@ def set_bn_eval(m):
 
 def getEntityEmbeddings(kge_model, hops):
     e = {}
-    entity_dict = '../../pretrained_models/embeddings/ComplEx_fbwq_full/entity_ids.del'
+    entity_dict = f'../../pretrained_models/embeddings/ComplEx_{datasetname}_full/entity_ids.del'
     if 'half' in hops:
-        entity_dict = '../../pretrained_models/embeddings/ComplEx_fbwq_half/entity_ids.del'
+        entity_dict = f'../../pretrained_models/embeddings/ComplEx_{datasetname}_half/entity_ids.del'
         print('Loading half entity_ids.del')
     embedder = kge_model._entity_embedder
     f = open(entity_dict, 'r')
@@ -297,7 +298,7 @@ def train(data_path, neg_batch_size, batch_size, shuffle, num_workers, nb_epochs
     kg_type = 'full'
     if 'half' in hops:
         kg_type = 'half'
-    checkpoint_file = '../../pretrained_models/embeddings/ComplEx_MetaQA_' + kg_type + '/checkpoint_best.pt'
+    checkpoint_file = f'../../pretrained_models/embeddings/ComplEx_{datasetname}_' + kg_type + '/checkpoint_best.pt'
     print('加载知识图谱嵌入，从文件 ', checkpoint_file)
     kge_checkpoint = load_checkpoint(checkpoint_file)
     kge_model = KgeModel.create_from(kge_checkpoint)
@@ -402,7 +403,7 @@ def eval(data_path,
     kg_type = 'full'
     if 'half' in hops:
         kg_type = 'half'
-    checkpoint_file = '../../pretrained_models/embeddings/ComplEx_fbwq_' + kg_type + '/checkpoint_best.pt'
+    checkpoint_file = f'../../pretrained_models/embeddings/ComplEx_{datasetname}_' + kg_type + '/checkpoint_best.pt'
     print('Loading kg embeddings from', checkpoint_file)
     kge_checkpoint = load_checkpoint(checkpoint_file)
     kge_model = KgeModel.create_from(kge_checkpoint)
@@ -497,9 +498,16 @@ hops = args.hops
 
 model_name = args.model
 
-data_path = '../../data/QA_data/MetaQA/qa_train_1hop.txt'
-valid_data_path = '../../data/QA_data/MetaQA/qa_dev_1hop.txt'
-test_data_path = '../../data/QA_data/MetaQA/qa_test_1hop.txt'
+if datasetname == "MetaQA":
+    data_path = '../../data/QA_data/MetaQA/qa_train_1hop.txt'
+    valid_data_path = '../../data/QA_data/MetaQA/qa_dev_1hop.txt'
+    test_data_path = '../../data/QA_data/MetaQA/qa_test_1hop.txt'
+elif datasetname =="fbwq":
+    data_path = '../../data/QA_data/MetaQA/qa_train_1hop.txt'
+    valid_data_path = '../../data/QA_data/MetaQA/qa_dev_1hop.txt'
+    test_data_path = '../../data/QA_data/MetaQA/qa_test_1hop.txt'
+else:
+    raise Exception("不支持的数据集")
 
 
 if args.mode == 'train':

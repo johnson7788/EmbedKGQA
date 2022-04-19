@@ -8,6 +8,15 @@ UPDATE: Please see https://github.com/malllabiisc/EmbedKGQA/issues/69 for an iss
 
 文件`pruning_main.py`训练这个模型。在可下载的pretrained_models.zip中，有一个预训练的版本。
 
+
+```python
+pruning_dataloader.py
+pruning_main.py  精简的训练文件
+pruning_model.py
+pruning_test.txt   #测试集
+pruning_train.txt  # 训练集
+```
+
 ## Relation matching scoring
 
 请看ipython笔记本`relation_matching_eval.ipynb`，用于对关系匹配的QA模型输出进行评分。这个笔记本假设基础QA模型的分数存储在
