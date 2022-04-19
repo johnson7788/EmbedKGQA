@@ -293,12 +293,12 @@ def getEntityEmbeddings(kge_model, hops):
     return e
 
 def train(data_path, neg_batch_size, batch_size, shuffle, num_workers, nb_epochs, embedding_dim, hidden_dim, relation_dim, gpu, use_cuda,patience, freeze, validate_every, hops, lr, entdrop, reldrop, scoredrop, l3_reg, model_name, decay, ls, load_from, outfile, do_batch_norm, valid_data_path=None):
-    print('Loading entities and relations')
+    print('加载实体和关系数据')
     kg_type = 'full'
     if 'half' in hops:
         kg_type = 'half'
-    checkpoint_file = '../../pretrained_models/embeddings/ComplEx_fbwq_' + kg_type + '/checkpoint_best.pt'
-    print('Loading kg embeddings from', checkpoint_file)
+    checkpoint_file = '../../pretrained_models/embeddings/ComplEx_MetaQA_' + kg_type + '/checkpoint_best.pt'
+    print('加载知识图谱嵌入，从文件 ', checkpoint_file)
     kge_checkpoint = load_checkpoint(checkpoint_file)
     kge_model = KgeModel.create_from(kge_checkpoint)
     kge_model.eval()
@@ -497,10 +497,9 @@ hops = args.hops
 
 model_name = args.model
 
-if 'webqsp' in hops:
-    data_path = '../../data/QA_data/WebQuestionsSP/qa_train_webqsp.txt'
-    valid_data_path = '../../data/QA_data/WebQuestionsSP/qa_test_webqsp_fixed.txt'
-    test_data_path = '../../data/QA_data/WebQuestionsSP/qa_test_webqsp_fixed.txt'
+data_path = '../../data/QA_data/MetaQA/qa_train_1hop.txt'
+valid_data_path = '../../data/QA_data/MetaQA/qa_dev_1hop.txt'
+test_data_path = '../../data/QA_data/MetaQA/qa_test_1hop.txt'
 
 
 if args.mode == 'train':
@@ -531,7 +530,6 @@ if args.mode == 'train':
     load_from=args.load_from,
     outfile=args.outfile,
     do_batch_norm=args.do_batch_norm)
-
 
 
 elif args.mode == 'eval':
