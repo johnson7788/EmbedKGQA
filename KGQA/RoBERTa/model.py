@@ -225,7 +225,7 @@ class RelationExtractor(nn.Module):
     
     def getQuestionEmbedding(self, question_tokenized, attention_mask):
         """
-
+        获取问题的编码结果
         :param question_tokenized: [batch_size, seq_len]
         :type question_tokenized:
         :param attention_mask: [batch_size, seq_len]
@@ -233,11 +233,9 @@ class RelationExtractor(nn.Module):
         :return:
         :rtype:
         """
-        last_hidden_states = self.bert_model(question_tokenized, attention_mask=attention_mask)[0]
-        states = last_hidden_states.transpose(1,0)
-        cls_embedding = states[0]
-        question_embedding = cls_embedding
-        # question_embedding = torch.mean(roberta_last_hidden_states, dim=1)
+        last_hidden_states = self.bert_model(question_tokenized, attention_mask=attention_mask)[0]  # [batch_size, seq_len, hidden_size]
+        cls_hidden_states = last_hidden_states[:, 0, :]  # [batch_size, hidden_size], eg:[32,768]
+        question_embedding = cls_hidden_states
         return question_embedding
 
     def forward(self, question_tokenized, attention_mask, p_head, p_tail):    
