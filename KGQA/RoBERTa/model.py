@@ -56,8 +56,9 @@ class RelationExtractor(nn.Module):
             self.relation_dim = relation_dim * relation_dim
         
         self.num_entities = num_entities
+        self.loss = torch.nn.CrossEntropyLoss()
         # self.loss = torch.nn.BCELoss(reduction='sum')
-        self.loss = self.kge_loss
+        # self.loss = self.kge_loss
 
         # best: all dropout 0
         self.rel_dropout = torch.nn.Dropout(reldrop)
@@ -65,14 +66,12 @@ class RelationExtractor(nn.Module):
         self.score_dropout = torch.nn.Dropout(scoredrop)
         self.fcnn_dropout = torch.nn.Dropout(0.1)
 
-        # self.pretrained_embeddings = pretrained_embeddings
-        # random.shuffle(pretrained_embeddings)
-        # print(pretrained_embeddings[0])
         print('冻结Embedding的参数:', self.freeze)
-        self.embedding = nn.Embedding.from_pretrained(torch.stack(pretrained_embeddings, dim=0), freeze=self.freeze)
+        # self.embedding = nn.Embedding.from_pretrained(torch.stack(pretrained_embeddings, dim=0), freeze=self.freeze)
         # self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
-        print(self.embedding.weight.shape)
-        # self.embedding = nn.Embedding(self.num_entities, self.relation_dim)
+
+        self.embedding = nn.Embedding(self.num_entities, self.relation_dim)
+        print('实体Embedding的维度是:', self.embedding.weight.size())
         # self.embedding.weight.requires_grad = False
         # xavier_normal_(self.embedding.weight.data)
 
