@@ -11,7 +11,7 @@ UPDATE: Please see https://github.com/malllabiisc/EmbedKGQA/issues/69 for an iss
 
 ```python
 pruning_dataloader.py
-pruning_main.py  精简的训练文件
+pruning_main.py  精简的训练文件, 就是训练问题等价于哪些关系
 pruning_model.py
 pruning_test.txt   #测试集
 pruning_train.txt  # 训练集

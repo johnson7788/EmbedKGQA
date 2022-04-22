@@ -19,7 +19,7 @@ from collections import defaultdict
 parser = argparse.ArgumentParser()
 
 
-parser.add_argument('--ls', type=float, default=0.1)
+parser.add_argument('--ls', type=float, default=0.1, help='label_smoothing')
 parser.add_argument('--validate_every', type=int, default=25)
 
 parser.add_argument('--batch_size', type=int, default=16)
@@ -28,7 +28,7 @@ parser.add_argument('--shuffle_data', type=bool, default=True)
 parser.add_argument('--num_workers', type=int, default=5)
 parser.add_argument('--lr', type=float, default=0.0001)
 parser.add_argument('--nb_epochs', type=int, default=90)
-parser.add_argument('--gpu', type=int, default=2)
+parser.add_argument('--gpu', type=int, default=0, help='gpu id')
 parser.add_argument('--use_cuda', type=bool, default=True)
 parser.add_argument('--patience', type=int, default=15)
 
@@ -97,10 +97,10 @@ def process_data_file(fname, rel2idx, idx2rel):
         line = line.strip().split('\t')
         question = line[0].strip()
         #TODO only work for webqsp. to remove entity from metaqa, use something else
-        #remove entity from question
-        question = question.split('[')[0]
-        rel_list = line[1].split('|')
-        rel_id_list = []
+        #从问题中移除掉了实体
+        question = question.split('[')[0]   #问题， 'what is the name of justin bieber brother '
+        rel_list = line[1].split('|')      #关系，['people.sibling_relationship.sibling', 'people.person.sibling_s']
+        rel_id_list = []   # 关系id[886, 880]
         for rel in rel_list:
             rel_id_list.append(rel2idx[rel])
         data.append((question, rel_id_list, line[0].strip()))
@@ -108,8 +108,8 @@ def process_data_file(fname, rel2idx, idx2rel):
 
 def train(batch_size, shuffle, num_workers, nb_epochs, gpu, use_cuda, patience, validate_every, lr, decay, ls):
     # f = open('/scratche/home/apoorv/mod_TuckER/models/ComplEx_fbwq_full/relations.dict', 'r')
-    f = open('/scratche/home/apoorv/mod_TuckER/data/fbwq_full_allrels/relations.dict', 'r')
-    rel2idx = {}
+    f = open('/home/wac/johnson/johnson/EmbedKGQA/data/fbwq_full/relations_all.dict', 'r')
+    rel2idx = {}  #关系到id，eg: {'american_football.football_coach.coaching_history': 0}
     idx2rel = {}
     for line in f:
         line = line.strip().split('\t')
@@ -118,7 +118,7 @@ def train(batch_size, shuffle, num_workers, nb_epochs, gpu, use_cuda, patience, 
         rel2idx[rel] = id
         idx2rel[id] = rel
     f.close()
-    data = process_data_file('pruning_train.txt', rel2idx, idx2rel)
+    data = process_data_file('pruning_train.txt', rel2idx, idx2rel) # 返回的list数据，每条数据是tuple(问题，关系id列表，原始问题)   ('what is the name of justin bieber brother ', [7242, 7212], 'what is the name of justin bieber brother [m.06w2sn5]'),
     device = torch.device(gpu if use_cuda else "cpu")
     dataset = DatasetPruning(data=data, rel2idx = rel2idx, idx2rel = idx2rel)
     data_loader = DataLoader(dataset,batch_size=batch_size, shuffle=True, num_workers=num_workers)
@@ -146,9 +146,9 @@ def train(batch_size, shuffle, num_workers, nb_epochs, gpu, use_cuda, patience, 
                 running_loss = 0
                 for i_batch, a in enumerate(loader):
                     model.zero_grad()
-                    question_tokenized = a[0].to(device)
-                    attention_mask = a[1].to(device)
-                    rel_one_hot = a[2].to(device)
+                    question_tokenized = a[0].to(device)  # 问题[batch_size, seq_len]
+                    attention_mask = a[1].to(device)  #[batch_size, seq_len]
+                    rel_one_hot = a[2].to(device)   #[batch_size, relation_num],  torch.Size([16, 18478])
                     loss = model(question_tokenized=question_tokenized, attention_mask=attention_mask, rel_one_hot=rel_one_hot)
                     loss.backward()
                     optimizer.step()

@@ -60,7 +60,7 @@ class PruningModel(nn.Module):
         return question_embedding
     
     def forward(self, question_tokenized, attention_mask, rel_one_hot):
-        question_embedding = self.getQuestionEmbedding(question_tokenized, attention_mask)
+        question_embedding = self.getQuestionEmbedding(question_tokenized, attention_mask)   #[batch_size, embedding_size], eg:[16,768]
         prediction = self.applyNonLinear(question_embedding)
         prediction = torch.sigmoid(prediction)
         actual = rel_one_hot
