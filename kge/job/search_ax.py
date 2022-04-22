@@ -1,13 +1,11 @@
 from math import ceil
 
 from ax import Models
-from ax.core import ObservationFeatures
 from ax.modelbridge.generation_strategy import GenerationStep, GenerationStrategy
 
 from kge.job import AutoSearchJob, Job
 from kge import Config
 from ax.service.ax_client import AxClient
-from typing import List
 
 
 class AxSearchJob(AutoSearchJob):
@@ -61,7 +59,7 @@ class AxSearchJob(AutoSearchJob):
             name=self.job_id,
             parameters=self.config.get("ax_search.parameters"),
             objective_name="metric_value",
-            minimize=False,
+            minimize=not self.config.get("valid.metric_max"),
             parameter_constraints=self.config.get("ax_search.parameter_constraints"),
             choose_generation_strategy_kwargs=choose_generation_strategy_kwargs,
         )
@@ -72,9 +70,7 @@ class AxSearchJob(AutoSearchJob):
         # Make sure sobol models are resumed correctly
         if self.ax_client.generation_strategy._curr.model == Models.SOBOL:
 
-            self.ax_client.generation_strategy._set_current_model(
-                experiment=self.ax_client.experiment, data=None
-            )
+            self.ax_client.generation_strategy.experiment = self.ax_client.experiment
 
             # Regenerate and drop SOBOL arms already generated. Since we fixed the seed,
             # we will skip exactly the arms already generated in the job being resumed.

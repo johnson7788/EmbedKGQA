@@ -13,6 +13,7 @@ from kge.misc import get_git_revision_short_hash, kge_base_dir, is_number
 from kge.util.dump import add_dump_parsers, dump
 from kge.util.io import get_checkpoint_file, load_checkpoint
 from kge.util.package import package_model, add_package_parser
+from kge.util.seed import seed_from_config
 
 
 def argparse_bool_type(v):
@@ -182,7 +183,7 @@ def main():
                 file=sys.stderr,
             )
 
-        if args.verbose != False:
+        if not vars(args)["console.quiet"]:
             print("Loading configuration {}...".format(args.config))
         config.load(args.config)
 
@@ -190,7 +191,7 @@ def main():
     if args.command == "resume":
         if os.path.isdir(args.config) and os.path.isfile(args.config + "/config.yaml"):
             args.config += "/config.yaml"
-        if args.verbose != False:
+        if not vars(args)["console.quiet"]:
             print("Resuming from configuration {}...".format(args.config))
         config.load(args.config)
         config.folder = os.path.dirname(args.config)
@@ -250,24 +251,8 @@ def main():
         # disable processing of outdated cached dataset files globally
         Dataset._abort_when_cache_outdated = args.abort_when_cache_outdated
 
-        # log configuration
-        config.log("Configuration:")
-        config.log(yaml.dump(config.options), prefix="  ")
-        config.log("git commit: {}".format(get_git_revision_short_hash()), prefix="  ")
-
         # set random seeds
-        if config.get("random_seed.python") > -1:
-            import random
-
-            random.seed(config.get("random_seed.python"))
-        if config.get("random_seed.torch") > -1:
-            import torch
-
-            torch.manual_seed(config.get("random_seed.torch"))
-        if config.get("random_seed.numpy") > -1:
-            import numpy.random
-
-            numpy.random.seed(config.get("random_seed.numpy"))
+        seed_from_config(config)
 
         # let's go
         if args.command == "start" and not args.run:
@@ -292,11 +277,17 @@ def main():
                     )
             else:
                 job = Job.create(config, dataset)
+
+            # log configuration
+            config.log("Configuration:")
+            config.log(yaml.dump(config.options), prefix="  ")
+            config.log("git commit: {}".format(get_git_revision_short_hash()),
+                       prefix="  ")
             job.run()
-    except BaseException as e:
+    except BaseException:
         tb = traceback.format_exc()
         config.log(tb, echo=False)
-        raise e from None
+        raise
 
 
 if __name__ == "__main__":

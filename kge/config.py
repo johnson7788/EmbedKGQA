@@ -7,10 +7,12 @@ import os
 import time
 import uuid
 import sys
+import re
 from enum import Enum
+from copy import deepcopy
 
 import yaml
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, List, Dict, Optional, Union
 
 
 class Config:
@@ -28,35 +30,47 @@ class Config:
 
             with open(filename_in_module(kge, "config-default.yaml"), "r") as file:
                 self.options: Dict[str, Any] = yaml.load(file, Loader=yaml.SafeLoader)
+
+                # Keeps track of the default options set by config-default.yaml.
+                # This allows to check whether a default value was already overwritten
+                # before overwriting this set option again with a new value
+                self.default_options: Dict[str, Any] = deepcopy(self.options)
+
+            for m in self.get("import"):
+                self._import(m)
         else:
-            self.options = {}
+            self.options: Dict[str, Any] = dict()
+            self.default_options: Dict[str, Any] = dict()
 
         self.folder = folder  # main folder (config file, checkpoints, ...)
-        self.log_folder: Optional[str] = (
-            None  # None means use self.folder; used for kge.log, trace.yaml
-        )
+        self.log_folder: Optional[
+            str
+        ] = None  # None means use self.folder; used for kge.log, trace.yaml
         self.log_prefix: str = None
 
     # -- ACCESS METHODS ----------------------------------------------------------------
 
-    def get(self, key: str, remove_plusplusplus=True) -> Any:
-        """Obtain value of specified key.
+    @staticmethod
+    def _nested_get(key: str, lookup_dict: Dict, remove_plusplusplus=True, raise_keyerror=True):
+        """Nested dictionary lookup.
 
         Nested dictionary values can be accessed via "." (e.g., "job.type"). Strips all
         '+++' keys unless `remove_plusplusplus` is set to `False`.
 
         """
-        result = self.options
+        result = lookup_dict
         for name in key.split("."):
             try:
                 result = result[name]
             except KeyError:
-                raise KeyError(f"Error accessing {name} for key {key}")
+                if raise_keyerror:
+                    raise KeyError(f"Error accessing {name} for key {key}")
+                return None
 
-        if remove_plusplusplus and isinstance(result, collections.Mapping):
+        if remove_plusplusplus and isinstance(result, collections.abc.Mapping):
 
             def do_remove_plusplusplus(option):
-                if isinstance(option, collections.Mapping):
+                if isinstance(option, collections.abc.Mapping):
                     option.pop("+++", None)
                     for values in option.values():
                         do_remove_plusplusplus(values)
@@ -65,6 +79,15 @@ class Config:
             do_remove_plusplusplus(result)
 
         return result
+
+    def get(self, key: str, remove_plusplusplus=True) -> Any:
+        """Obtain value of specified key.
+
+        Nested dictionary values can be accessed via "." (e.g., "job.type"). Strips all
+        '+++' keys unless `remove_plusplusplus` is set to `False`.
+
+        """
+        return self._nested_get(key, self.options, remove_plusplusplus)
 
     def get_default(self, key: str) -> Any:
         """Returns the value of the key if present or default if not.
@@ -139,7 +162,7 @@ class Config:
         except KeyError:
             return False
 
-    Overwrite = Enum("Overwrite", "Yes No Error")
+    Overwrite = Enum("Overwrite", "Yes No Error DefaultOnly")
 
     def set(
         self, key: str, value, create=False, overwrite=Overwrite.Yes, log=False
@@ -226,34 +249,55 @@ class Config:
                 )
             if overwrite == Config.Overwrite.No:
                 return current_value
+            if overwrite == Config.Overwrite.DefaultOnly:
+                if current_value == value:
+                    return current_value
+                warning_message = f"Warning: Avoided overwrite of already set option {key}. Used {current_value} instead of {value}."
+                default_value = self._nested_get(
+                    key, self.default_options, raise_keyerror=False
+                )
+                if default_value is None:
+                    print(warning_message, file=sys.stderr)
+                    return current_value
+                elif current_value != default_value:
+                    print(warning_message, file=sys.stderr)
+                    return current_value
             if overwrite == Config.Overwrite.Error and value != current_value:
                 raise ValueError("key '{}' cannot be overwritten".format(key))
 
         # all fine, set value
         data[splits[-1]] = value
         if log:
-            self.log("Set {}={}".format(key, value))
+            self.log(
+                "Set {}={} (was {})".format(
+                    key,
+                    repr(value),
+                    repr(current_value) if current_value is not None else "unset",
+                )
+            )
         return value
 
     def _import(self, module_name: str):
         """Imports the specified module configuration.
 
-        Adds the configuration options from kge/model/<module_name>.yaml to
+        Adds the configuration options from <module_name>.yaml to
         the configuration. Retains existing module configurations, but verifies
         that fields and their types are correct.
 
         """
-        import kge.model, kge.model.embedder
-        from kge.misc import filename_in_module
 
         # load the module_name
         module_config = Config(load_default=False)
-        module_config.load(
-            filename_in_module(
-                [kge.model, kge.model.embedder], "{}.yaml".format(module_name)
-            ),
-            create=True,
-        )
+
+        # add the importing config's modules to the imported config
+        module_names = self.get_default("modules")
+        module_config.set("modules", module_names, create=True)
+
+        from kge.misc import filename_in_module
+
+        config_filename = filename_in_module(self.modules(), f"{module_name}.yaml")
+        module_config.load(config_filename, create=True)
+
         if "import" in module_config.options:
             del module_config.options["import"]
 
@@ -319,6 +363,14 @@ class Config:
         self, new_options, create=False, overwrite=Overwrite.Yes, allow_deprecated=True
     ):
         "Like `load`, but loads from an options object obtained from `yaml.load`."
+
+        # check for modules first, so if it's necessary we can import from them.
+        if "modules" in new_options:
+            modules = set(self.options.get("modules", []))
+            modules = modules.union(new_options.get("modules"))
+            self.set("modules", list(modules), create=True)
+            del new_options["modules"]
+
         # import model configurations
         if "model" in new_options:
             model = new_options.get("model")
@@ -326,6 +378,8 @@ class Config:
             # search with model as a search parameter
             if model:
                 self._import(model)
+
+        # import explicit imports
         if "import" in new_options:
             imports = new_options.get("import")
             if not isinstance(imports, list):
@@ -402,7 +456,7 @@ class Config:
 
     def print(self, *args, **kwargs):
         "Prints the given message unless console output is disabled"
-        if not self.exists("verbose") or self.get("verbose"):
+        if not self.exists("console.quiet") or not self.get("console.quiet"):
             print(*args, **kwargs)
 
     def trace(
@@ -480,14 +534,13 @@ class Config:
 
     def last_checkpoint_number(self) -> Optional[int]:
         "Return number (epoch) of latest checkpoint"
-        # stupid implementation, but works
-        tried_epoch = 0
-        found_epoch = 0
-        while tried_epoch < found_epoch + 500:
-            tried_epoch += 1
-            if os.path.exists(self.checkpoint_file(tried_epoch)):
-                found_epoch = tried_epoch
-        if found_epoch > 0:
+        found_epoch = -1
+        for f in os.listdir(self.folder):
+            if re.match("checkpoint_\d{5}\.pt", f):
+                new_found_epoch = int(f.split("_")[1].split(".")[0])
+                if new_found_epoch > found_epoch:
+                    found_epoch = new_found_epoch
+        if found_epoch >= 0:
             return found_epoch
         else:
             return None
@@ -495,6 +548,9 @@ class Config:
     @staticmethod
     def best_or_last_checkpoint_file(path: str) -> str:
         """Return best (if present) or last checkpoint path for a given folder path."""
+        if not os.path.exists(path):
+            raise Exception("Path or file {} does not exist".format(path))
+
         config = Config(folder=path, load_default=False)
         checkpoint_file = config.checkpoint_file("best")
         if os.path.isfile(checkpoint_file):
@@ -565,6 +621,11 @@ class Config:
             return os.path.join(folder, "trace.yaml")
         else:
             return os.devnull
+
+    def modules(self) -> List[types.ModuleType]:
+        import importlib
+
+        return [importlib.import_module(m) for m in self.get("modules")]
 
 
 class Configurable:
@@ -677,6 +738,25 @@ def _process_deprecated_options(options: Dict[str, Any]):
             else:
                 raise ValueError(f"key {key} is deprecated and has been removed.")
 
+    # deletes a key with a regular expression if it takes the given value (else error)
+    def delete_key_re_with_default_value(key_regex, value):
+        regex = re.compile(key_regex)
+        for old_key in list(options.keys()):
+            if regex.match(old_key):
+                if options[old_key] == value:
+                    print(
+                        f"Warning: key {old_key} is deprecated and has been removed."
+                        " Ignoring key since it has its value is compatible with the"
+                        " current implementation.",
+                        file=sys.stderr,
+                    )
+                    del options[old_key]
+                else:
+                    raise ValueError(
+                        f"Warning: key {old_key} is deprecated and has been removed."
+                        f" The specified value {options[old_key]} is not supported any more."
+                    )
+
     # renames a set of keys matching a regular expression
     def rename_keys_re(key_regex, replacement):
         renamed_keys = set()
@@ -697,6 +777,39 @@ def _process_deprecated_options(options: Dict[str, Any]):
                 if rename_value(key, old_value, new_value):
                     renamed_keys.add(key)
         return renamed_keys
+
+    # 08.09.21
+    rename_key("entity_ranking.tie_handling", "entity_ranking.tie_handling.type")
+
+    # 15.12.20
+    rename_value("search.type", "ax", "ax_search")
+    rename_value("search.type", "manual", "manual_search")
+    rename_value("search.type", "grid", "grid_search")
+
+    # 09.10.20
+    rename_key("train.optimizer", "train.optimizer.default.type")
+    rename_keys_re("^train\.optimizer_args", "train.optimizer.default.args")
+
+    # 30.9.2020
+    if "verbose" in options:
+        rename_key("verbose", "console.quiet")
+        options["console.quiet"] = not options["console.quiet"]
+
+    # 21.9.2020
+    tucker_reg_key = "tucker3_relation_embedder.regularize_args.p"
+    if tucker_reg_key in options and isinstance(options[tucker_reg_key], int):
+        options[tucker_reg_key] = float(options[tucker_reg_key])
+
+    # 15.9.2020
+    rename_keys_re(
+        "^valid\.early_stopping\.min_threshold\.", "valid.early_stopping.threshold."
+    )
+
+    # 31.8.2020
+    rename_key("negative_sampling.chunk_size", "train.subbatch_size")
+
+    # 13.6.2020
+    delete_key_re_with_default_value(".*normalize.with_grad", False)
 
     # 10.6.2020
     rename_key("eval.filter_splits", "entity_ranking.filter_splits")
@@ -784,4 +897,5 @@ def _process_deprecated_options(options: Dict[str, Any]):
         "eval.metric_per_argument_frequency_perc",
         "entity_ranking.metrics_per.argument_frequency",
     )
+
     return options

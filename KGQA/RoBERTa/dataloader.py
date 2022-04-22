@@ -9,7 +9,7 @@ import time
 from collections import defaultdict
 from tqdm import tqdm
 import numpy as np
-from transformers import *
+from transformers import BertTokenizer
 
 
 class DatasetMetaQA(Dataset):
@@ -20,18 +20,21 @@ class DatasetMetaQA(Dataset):
         self.pos_dict = defaultdict(list)
         self.neg_dict = defaultdict(list)
         self.index_array = list(self.entities.keys())
-        self.tokenizer_class = RobertaTokenizer
-        self.pretrained_weights = 'roberta-base'
+        self.tokenizer_class = BertTokenizer
+        self.pretrained_weights = 'bert-base-chinese'
         self.tokenizer = self.tokenizer_class.from_pretrained(self.pretrained_weights)
 
     def __len__(self):
         return len(self.data)
     
     def pad_sequence(self, arr, max_len=128):
-        num_to_add = max_len - len(arr)
-        for _ in range(num_to_add):
-            arr.append('<pad>')
-        return arr
+        if len(arr) >= max_len:
+            return arr[:max_len]
+        else:
+            num_to_add = max_len - len(arr)
+            for _ in range(num_to_add):
+                arr.append('<pad>')
+            return arr
 
     def toOneHot(self, indices):
         indices = torch.LongTensor(indices)
@@ -49,11 +52,11 @@ class DatasetMetaQA(Dataset):
         question_tokenized, attention_mask = self.tokenize_question(question_text)
         head_id = self.entity2idx[data_point[0].strip()]
         tail_ids = []
-        for tail_name in data_point[2]:
-            tail_name = tail_name.strip()
-            #TODO: dunno if this is right way of doing things
-            if tail_name in self.entity2idx:
-                tail_ids.append(self.entity2idx[tail_name])
+        if isinstance(data_point[2], list):
+            for tail in data_point[2]:
+                tail_ids.append(self.entity2idx[tail.strip()])
+        else:
+            tail_ids.append(self.entity2idx[data_point[2].strip()])
         tail_onehot = self.toOneHot(tail_ids)
         return question_tokenized, attention_mask, head_id, tail_onehot 
 

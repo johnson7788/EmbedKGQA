@@ -1,14 +1,17 @@
 import torch
+import time
 
 from kge import Config, Dataset
-from kge.job import Job
+from kge.job import Job, TrainingOrEvaluationJob, TrainingJob
 from kge.model import KgeModel
+from kge.job.trace import format_trace_entry
+from kge.misc import init_from
 
-from typing import Dict, Union, Optional
+from typing import Dict, Optional, Any
 
 
-class EvaluationJob(Job):
-    def __init__(self, config, dataset, parent_job, model):
+class EvaluationJob(TrainingOrEvaluationJob):
+    def __init__(self, config: Config, dataset: Dataset, parent_job, model):
         super().__init__(config, dataset, parent_job)
 
         self.config = config
@@ -16,53 +19,13 @@ class EvaluationJob(Job):
         self.model = model
         self.batch_size = config.get("eval.batch_size")
         self.device = self.config.get("job.device")
-        max_k = min(
-            self.dataset.num_entities(), max(self.config.get("entity_ranking.hits_at_k_s"))
-        )
-        self.hits_at_k_s = list(
-            filter(lambda x: x <= max_k, self.config.get("entity_ranking.hits_at_k_s"))
-        )
         self.config.check("train.trace_level", ["example", "batch", "epoch"])
         self.trace_examples = self.config.get("eval.trace_level") == "example"
         self.trace_batch = (
             self.trace_examples or self.config.get("train.trace_level") == "batch"
         )
         self.eval_split = self.config.get("eval.split")
-        self.filter_splits = self.config.get("entity_ranking.filter_splits")
-        if self.eval_split not in self.filter_splits:
-            self.filter_splits.append(self.eval_split)
-        self.filter_with_test = config.get("entity_ranking.filter_with_test")
         self.epoch = -1
-
-        #: Hooks run after training for an epoch.
-        #: Signature: job, trace_entry
-        self.post_epoch_hooks = []
-
-        #: Hooks run before starting a batch.
-        #: Signature: job
-        self.pre_batch_hooks = []
-
-        #: Hooks run before outputting the trace of a batch. Can modify trace entry.
-        #: Signature: job, trace_entry
-        self.post_batch_trace_hooks = []
-
-        #: Hooks run before outputting the trace of an epoch. Can modify trace entry.
-        #: Signature: job, trace_entry
-        self.post_epoch_trace_hooks = []
-
-        #: Signature: job, trace_entry
-        self.post_valid_hooks = []
-
-        #: Whether to create additional histograms for head and tail slot
-        self.head_and_tail = config.get("entity_ranking.metrics_per.head_and_tail")
-
-        #: Hooks after computing the ranks for each batch entry.
-        #: Signature: job, trace_entry
-        self.hist_hooks = [hist_all]
-        if config.get("entity_ranking.metrics_per.relation_type"):
-            self.hist_hooks.append(hist_per_relation_type)
-        if config.get("entity_ranking.metrics_per.argument_frequency"):
-            self.hist_hooks.append(hist_per_frequency_percentile)
 
         # all done, run job_created_hooks if necessary
         if self.__class__ == EvaluationJob:
@@ -72,20 +35,70 @@ class EvaluationJob(Job):
     @staticmethod
     def create(config, dataset, parent_job=None, model=None):
         """Factory method to create an evaluation job """
-        from kge.job import EntityRankingJob, EntityPairRankingJob
 
-        # create the job
-        if config.get("eval.type") == "entity_ranking":
-            return EntityRankingJob(config, dataset, parent_job=parent_job, model=model)
-        elif config.get("eval.type") == "entity_pair_ranking":
-            return EntityPairRankingJob(
-                config, dataset, parent_job=parent_job, model=model
+        eval_type = config.get("eval.type")
+        class_name = config.get_default(f"{eval_type}.class_name")
+        return init_from(
+            class_name,
+            config.modules(),
+            config,
+            dataset,
+            parent_job=parent_job,
+            model=model,
+        )
+
+    def _prepare(self):
+        """Prepare this job for running.
+        Guaranteed to be called exactly once before running the first epoch.
+
+        """
+        super()._prepare()
+        self.model.prepare_job(self)  # let the model add some hooks
+
+    def _run(self) -> Dict[str, Any]:
+        was_training = self.model.training
+        self.model.eval()
+        self.config.log(
+            "Evaluating on "
+            + self.eval_split
+            + " data (epoch {})...".format(self.epoch)
+        )
+
+        self._evaluate()
+
+        # if validation metric is not present, try to compute it
+        metric_name = self.config.get("valid.metric")
+        if metric_name not in self.current_trace["epoch"]:
+            self.current_trace["epoch"][metric_name] = eval(
+                self.config.get("valid.metric_expr"),
+                None,
+                dict(config=self.config, **self.current_trace["epoch"]),
             )
-        else:
-            raise ValueError("eval.type")
 
-    def _run(self) -> dict:
-        """ Compute evaluation metrics, output results to trace file """
+        # run hooks (may modify trace)
+        for f in self.post_epoch_hooks:
+            f(self)
+
+        # output the trace, then clear it
+        trace_entry = self.trace(**self.current_trace["epoch"], echo=False, log=True)
+        self.config.log(
+            format_trace_entry("eval_epoch", trace_entry, self.config), prefix="  "
+        )
+        self.current_trace["epoch"] = None
+
+        # reset model and return metrics
+        if was_training:
+            self.model.train()
+
+        self.config.log("Finished evaluating on " + self.eval_split + " split.")
+
+        return trace_entry
+
+    def _evaluate(self):
+        """
+        Compute evaluation metrics, output results to trace file.
+        The results of the evaluation must be written into self.current_trace["epoch"]
+        """
         raise NotImplementedError
 
     def _load(self, checkpoint: Dict):
@@ -132,93 +145,3 @@ class EvaluationJob(Job):
         return super().create_from(checkpoint, new_config, dataset, parent_job)
 
 
-# HISTOGRAM COMPUTATION ###############################################################
-
-
-def __initialize_hist(hists, key, job):
-    """If there is no histogram with given `key` in `hists`, add an empty one."""
-    if key not in hists:
-        hists[key] = torch.zeros(
-            [job.dataset.num_entities()],
-            device=job.config.get("job.device"),
-            dtype=torch.float,
-        )
-
-
-def hist_all(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
-    """Create histogram of all subject/object ranks (key: "all").
-
-    `hists` a dictionary of histograms to update; only key "all" will be affected. `s`,
-    `p`, `o` are true triples indexes for the batch. `s_ranks` and `o_ranks` are the
-    rank of the true answer for (?,p,o) and (s,p,?) obtained from a model.
-
-    """
-    __initialize_hist(hists, "all", job)
-    if job.head_and_tail:
-        __initialize_hist(hists, "head", job)
-        __initialize_hist(hists, "tail", job)
-        hist_head = hists["head"]
-        hist_tail = hists["tail"]
-
-    hist = hists["all"]
-    for r in o_ranks:
-        hist[r] += 1
-        if job.head_and_tail:
-            hist_tail[r] += 1
-    for r in s_ranks:
-        hist[r] += 1
-        if job.head_and_tail:
-            hist_head[r] += 1
-
-
-def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
-    for rel_type, rels in job.dataset.index("relations_per_type").items():
-        __initialize_hist(hists, rel_type, job)
-        hist = hists[rel_type]
-        if job.head_and_tail:
-            __initialize_hist(hists, f"{rel_type}_head", job)
-            __initialize_hist(hists, f"{rel_type}_tail", job)
-            hist_head = hists[f"{rel_type}_head"]
-            hist_tail = hists[f"{rel_type}_tail"]
-
-        mask = [_p in rels for _p in p.tolist()]
-        for r, m in zip(o_ranks, mask):
-            if m:
-                hists[rel_type][r] += 1
-                if job.head_and_tail:
-                    hist_tail[r] += 1
-
-        for r, m in zip(s_ranks, mask):
-            if m:
-                hists[rel_type][r] += 1
-                if job.head_and_tail:
-                    hist_head[r] += 1
-
-
-def hist_per_frequency_percentile(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
-    # initialize
-    frequency_percs = job.dataset.index("frequency_percentiles")
-    for arg, percs in frequency_percs.items():
-        for perc, value in percs.items():
-            __initialize_hist(hists, "{}_{}".format(arg, perc), job)
-
-    # go
-    for perc in frequency_percs["subject"].keys():  # same for relation and object
-        for r, m_s, m_r in zip(
-            s_ranks,
-            [id in frequency_percs["subject"][perc] for id in s.tolist()],
-            [id in frequency_percs["relation"][perc] for id in p.tolist()],
-        ):
-            if m_s:
-                hists["{}_{}".format("subject", perc)][r] += 1
-            if m_r:
-                hists["{}_{}".format("relation", perc)][r] += 1
-        for r, m_o, m_r in zip(
-            o_ranks,
-            [id in frequency_percs["object"][perc] for id in o.tolist()],
-            [id in frequency_percs["relation"][perc] for id in p.tolist()],
-        ):
-            if m_o:
-                hists["{}_{}".format("object", perc)][r] += 1
-            if m_r:
-                hists["{}_{}".format("relation", perc)][r] += 1

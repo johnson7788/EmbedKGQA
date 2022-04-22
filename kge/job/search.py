@@ -1,10 +1,13 @@
 import copy
+import gc
 import os
 import torch.multiprocessing
 import concurrent.futures
 from kge.job import Job, Trace
 from kge.config import _process_deprecated_options
 from kge.util.io import get_checkpoint_file, load_checkpoint
+from kge.util.metric import Metric
+from kge.misc import init_from
 
 
 class SearchJob(Job):
@@ -48,21 +51,9 @@ class SearchJob(Job):
     def create(config, dataset, parent_job=None):
         """Factory method to create a search job."""
 
-        if config.get("search.type") == "manual":
-            from kge.job import ManualSearchJob
-
-            return ManualSearchJob(config, dataset, parent_job)
-        elif config.get("search.type") == "grid":
-            from kge.job import GridSearchJob
-
-            return GridSearchJob(config, dataset, parent_job)
-        elif config.get("search.type") == "ax":
-            from kge.job import AxSearchJob
-
-            return AxSearchJob(config, dataset, parent_job)
-        else:
-            # perhaps TODO: try class with specified name -> extensibility
-            raise ValueError("search.type")
+        search_type = config.get("search.type")
+        class_name = config.get_default(f"{search_type}.class_name")
+        return init_from(class_name, config.modules(), config, dataset, parent_job)
 
     def submit_task(self, task, task_arg, wait_when_full=True):
         """Runs the given task with the given argument.
@@ -156,7 +147,9 @@ def _run_train_job(sicnk, device=None):
         metric_name = search_job.config.get("valid.metric")
         valid_trace = []
 
-        def copy_to_search_trace(job, trace_entry):
+        def copy_to_search_trace(job, trace_entry=None):
+            if trace_entry is None:
+                trace_entry = job.valid_trace[-1]
             trace_entry = copy.deepcopy(trace_entry)
             for key in trace_keys:
                 # Process deprecated options to some extent. Support key renames, but
@@ -203,20 +196,15 @@ def _run_train_job(sicnk, device=None):
         best_metric = None
         for trace_entry in valid_trace:
             metric = trace_entry["metric_value"]
-            if not best or best_metric < metric:
+            if not best or Metric(search_job).better(metric, best_metric):
                 best = trace_entry
                 best_metric = metric
 
         # record the best result of this job
         best["child_job_id"] = best["job_id"]
-        del (
-            best["job"],
-            best["job_id"],
-            best["type"],
-            best["parent_job_id"],
-            best["scope"],
-            best["event"],
-        )
+        for k in ["job", "job_id", "type", "parent_job_id", "scope", "event"]:
+            if k in best:
+                del best[k]
         search_job.trace(
             event="search_completed",
             echo=True,
@@ -225,6 +213,10 @@ def _run_train_job(sicnk, device=None):
             scope="train",
             **best,
         )
+
+        # force releasing the GPU memory of the job to avoid memory leakage
+        del job
+        gc.collect()
 
         return (train_job_index, best, best_metric)
     except BaseException as e:

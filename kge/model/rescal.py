@@ -1,4 +1,3 @@
-import math
 
 import torch
 
@@ -48,7 +47,7 @@ class RescalScorer(RelationalScorer):
                 .mm(s_emb.transpose(0, 1))
             )
         else:
-            out = super().score_emb(s_emb, p_emb, o_emb, combine)
+            return super().score_emb(s_emb, p_emb, o_emb, combine)
 
         return out.view(batch_size, -1)
 

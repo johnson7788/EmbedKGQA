@@ -22,9 +22,9 @@ class RelationExtractor(nn.Module):
         self.do_batch_norm = do_batch_norm
         if not self.do_batch_norm:
             print('Not doing batch norm')
-        self.roberta_pretrained_weights = 'roberta-base'
-        self.roberta_model = RobertaModel.from_pretrained(self.roberta_pretrained_weights)
-        for param in self.roberta_model.parameters():
+        self.bert_pretrained_weights = 'bert-base-chinese'
+        self.bert_model = BertModel.from_pretrained(self.bert_pretrained_weights)
+        for param in self.bert_model.parameters():
             param.requires_grad = True
         if self.model == 'DistMult':
             multiplier = 1
@@ -36,11 +36,6 @@ class RelationExtractor(nn.Module):
             multiplier = 2
             self.getScores = self.ComplEx
         elif self.model == 'TuckER':
-            # W_torch = torch.from_numpy(np.load(w_matrix))
-            # self.W = nn.Parameter(
-            #     torch.Tensor(W_torch), 
-            #     requires_grad = not self.freeze
-            # )
             self.W = nn.Parameter(torch.tensor(np.random.uniform(-1, 1, (relation_dim, relation_dim, relation_dim)), 
                                     dtype=torch.float, device="cuda", requires_grad=True))
             multiplier = 1
@@ -48,10 +43,13 @@ class RelationExtractor(nn.Module):
         elif self.model == 'RESCAL':
             self.getScores = self.RESCAL
             multiplier = 1
+        elif self.model == "MYMODEL":
+            self.getScores = self.MYMODEL
+            multiplier = 1
         else:
             print('Incorrect model specified:', self.model)
             exit(0)
-        print('Model is', self.model)
+        print('使用的模型是: ', self.model)
         self.hidden_dim = 768
         self.relation_dim = relation_dim * multiplier
         if self.model == 'RESCAL':
@@ -70,7 +68,7 @@ class RelationExtractor(nn.Module):
         # self.pretrained_embeddings = pretrained_embeddings
         # random.shuffle(pretrained_embeddings)
         # print(pretrained_embeddings[0])
-        print('Frozen:', self.freeze)
+        print('冻结Embedding的参数:', self.freeze)
         self.embedding = nn.Embedding.from_pretrained(torch.stack(pretrained_embeddings, dim=0), freeze=self.freeze)
         # self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
         print(self.embedding.weight.shape)
@@ -168,7 +166,14 @@ class RelationExtractor(nn.Module):
         ans = torch.mm(s, self.embedding.weight.transpose(1,0))
         pred = torch.sigmoid(ans)
         return pred
-    
+
+    def MYMODEL(self, head, relation):
+        head = self.ent_dropout(head)
+        relation = self.rel_dropout(relation)
+        head_relation_score = head * relation
+        predict = torch.mm(head_relation_score, self.embedding.weight.transpose(1, 0))
+        logits = torch.sigmoid(predict)
+        return logits
     def SimplE(self, head, relation):
         head = self.bn0(head)
         head = self.ent_dropout(head)
@@ -219,8 +224,17 @@ class RelationExtractor(nn.Module):
 
     
     def getQuestionEmbedding(self, question_tokenized, attention_mask):
-        roberta_last_hidden_states = self.roberta_model(question_tokenized, attention_mask=attention_mask)[0]
-        states = roberta_last_hidden_states.transpose(1,0)
+        """
+
+        :param question_tokenized: [batch_size, seq_len]
+        :type question_tokenized:
+        :param attention_mask: [batch_size, seq_len]
+        :type attention_mask:
+        :return:
+        :rtype:
+        """
+        last_hidden_states = self.bert_model(question_tokenized, attention_mask=attention_mask)[0]
+        states = last_hidden_states.transpose(1,0)
         cls_embedding = states[0]
         question_embedding = cls_embedding
         # question_embedding = torch.mean(roberta_last_hidden_states, dim=1)
@@ -228,9 +242,9 @@ class RelationExtractor(nn.Module):
 
     def forward(self, question_tokenized, attention_mask, p_head, p_tail):    
         question_embedding = self.getQuestionEmbedding(question_tokenized, attention_mask)
-        rel_embedding = self.applyNonLinear(question_embedding)
-        p_head = self.embedding(p_head)
-        pred = self.getScores(p_head, rel_embedding)
+        rel_embedding = self.applyNonLinear(question_embedding)  #[32,100], [batch_size,rel_embedding]
+        p_head = self.embedding(p_head)  #[32,100], [batch_size,rel_embedding]
+        pred = self.getScores(p_head, rel_embedding)  #预测结果: [batch_size, num_entities]
         actual = p_tail
         if self.label_smoothing:
             actual = ((1.0-self.label_smoothing)*actual) + (1.0/actual.size(1)) 

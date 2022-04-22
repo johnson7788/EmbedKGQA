@@ -1,5 +1,6 @@
 import math
 import time
+import sys
 
 import torch
 import kge.job
@@ -14,11 +15,37 @@ class EntityRankingJob(EvaluationJob):
     def __init__(self, config: Config, dataset: Dataset, parent_job, model):
         super().__init__(config, dataset, parent_job, model)
         self.config.check(
-            "entity_ranking.tie_handling",
+            "entity_ranking.tie_handling.type",
             ["rounded_mean_rank", "best_rank", "worst_rank"],
         )
-        self.tie_handling = self.config.get("entity_ranking.tie_handling")
-        self.is_prepared = False
+        self.tie_handling = self.config.get("entity_ranking.tie_handling.type")
+
+        self.tie_atol = float(self.config.get("entity_ranking.tie_handling.atol"))
+        self.tie_rtol = float(self.config.get("entity_ranking.tie_handling.rtol"))
+
+        self.filter_with_test = config.get("entity_ranking.filter_with_test")
+        self.filter_splits = self.config.get("entity_ranking.filter_splits")
+        if self.eval_split not in self.filter_splits:
+            self.filter_splits.append(self.eval_split)
+
+        max_k = min(
+            self.dataset.num_entities(),
+            max(self.config.get("entity_ranking.hits_at_k_s")),
+        )
+        self.hits_at_k_s = list(
+            filter(lambda x: x <= max_k, self.config.get("entity_ranking.hits_at_k_s"))
+        )
+
+        #: Whether to create additional histograms for head and tail slot
+        self.head_and_tail = config.get("entity_ranking.metrics_per.head_and_tail")
+
+        #: Hooks after computing the ranks for each batch entry.
+        #: Signature: hists, s, p, o, s_ranks, o_ranks, job, **kwargs
+        self.hist_hooks = [hist_all]
+        if config.get("entity_ranking.metrics_per.relation_type"):
+            self.hist_hooks.append(hist_per_relation_type)
+        if config.get("entity_ranking.metrics_per.argument_frequency"):
+            self.hist_hooks.append(hist_per_frequency_percentile)
 
         if self.__class__ == EntityRankingJob:
             for f in Job.job_created_hooks:
@@ -46,13 +73,11 @@ class EntityRankingJob(EvaluationJob):
             num_workers=self.config.get("eval.num_workers"),
             pin_memory=self.config.get("eval.pin_memory"),
         )
-        # let the model add some hooks, if it wants to do so
-        self.model.prepare_job(self)
-        self.is_prepared = True
 
     def _collate(self, batch):
         "Looks up true triples for each triple in the batch"
         label_coords = []
+        batch = torch.cat(batch).reshape((-1, 3))
         for split in self.filter_splits:
             split_label_coords = kge.job.util.get_sp_po_coords_from_spo_batch(
                 batch,
@@ -73,19 +98,10 @@ class EntityRankingJob(EvaluationJob):
         else:
             test_label_coords = torch.zeros([0, 2], dtype=torch.long)
 
-        batch = torch.cat(batch).reshape((-1, 3))
         return batch, label_coords, test_label_coords
 
     @torch.no_grad()
-    def _run(self) -> dict:
-
-        was_training = self.model.training
-        self.model.eval()
-        self.config.log(
-            "Evaluating on "
-            + self.eval_split
-            + " data (epoch {})...".format(self.epoch)
-        )
+    def _evaluate(self):
         num_entities = self.dataset.num_entities()
 
         # we also filter with test data if requested
@@ -107,9 +123,40 @@ class EntityRankingJob(EvaluationJob):
         hists_filt = dict()
         hists_filt_test = dict()
 
+        # create initial trace entry
+        self.current_trace["epoch"] = dict(
+            type="entity_ranking",
+            scope="epoch",
+            split=self.eval_split,
+            filter_splits=self.filter_splits,
+            epoch=self.epoch,
+            batches=len(self.loader),
+            size=len(self.triples),
+        )
+
+        # run pre-epoch hooks (may modify trace)
+        for f in self.pre_epoch_hooks:
+            f(self)
+
         # let's go
         epoch_time = -time.time()
         for batch_number, batch_coords in enumerate(self.loader):
+            # create initial batch trace (yet incomplete)
+            self.current_trace["batch"] = dict(
+                type="entity_ranking",
+                scope="batch",
+                split=self.eval_split,
+                filter_splits=self.filter_splits,
+                epoch=self.epoch,
+                batch=batch_number,
+                size=len(batch_coords[0]),
+                batches=len(self.loader),
+            )
+
+            # run the pre-batch hooks (may update the trace)
+            for f in self.pre_batch_hooks:
+                f(self)
+
             # construct a sparse label tensor of shape batch_size x 2*num_entities
             # entries are either 0 (false) or infinity (true)
             # TODO add timing information
@@ -136,15 +183,31 @@ class EntityRankingJob(EvaluationJob):
 
             # compute true scores beforehand, since we can't get them from a chunked
             # score table
-            o_true_scores = self.model.score_spo(s, p, o, "o").view(-1)
-            s_true_scores = self.model.score_spo(s, p, o, "s").view(-1)
+            # o_true_scores = self.model.score_spo(s, p, o, "o").view(-1)
+            # s_true_scores = self.model.score_spo(s, p, o, "s").view(-1)
+            # scoring with spo vs sp and po can lead to slight differences for ties
+            # due to floating point issues.
+            # We use score_sp and score_po to stay consistent with scoring used for
+            # further evaluation.
+            unique_o, unique_o_inverse = torch.unique(o, return_inverse=True)
+            o_true_scores = torch.gather(
+                self.model.score_sp(s, p, unique_o),
+                1,
+                unique_o_inverse.view(-1, 1),
+            ).view(-1)
+            unique_s, unique_s_inverse = torch.unique(s, return_inverse=True)
+            s_true_scores = torch.gather(
+                self.model.score_po(p, o, unique_s),
+                1,
+                unique_s_inverse.view(-1, 1),
+            ).view(-1)
 
             # default dictionary storing rank and num_ties for each key in rankings
             # as list of len 2: [rank, num_ties]
             ranks_and_ties_for_ranking = defaultdict(
                 lambda: [
-                    torch.zeros(s.size(0), dtype=torch.long).to(self.device),
-                    torch.zeros(s.size(0), dtype=torch.long).to(self.device),
+                    torch.zeros(s.size(0), dtype=torch.long, device=self.device),
+                    torch.zeros(s.size(0), dtype=torch.long, device=self.device),
                 ]
             )
 
@@ -162,7 +225,7 @@ class EntityRankingJob(EvaluationJob):
 
                 # compute scores of chunk
                 scores = self.model.score_sp_po(
-                    s, p, o, torch.arange(chunk_start, chunk_end).to(self.device)
+                    s, p, o, torch.arange(chunk_start, chunk_end, device=self.device)
                 )
                 scores_sp = scores[:, : chunk_end - chunk_start]
                 scores_po = scores[:, chunk_end - chunk_start :]
@@ -173,8 +236,42 @@ class EntityRankingJob(EvaluationJob):
                 o_in_chunk_mask = (chunk_start <= o) & (o < chunk_end)
                 o_in_chunk = (o[o_in_chunk_mask] - chunk_start).long()
                 s_in_chunk = (s[s_in_chunk_mask] - chunk_start).long()
-                scores_sp[o_in_chunk_mask, o_in_chunk] = o_true_scores[o_in_chunk_mask]
-                scores_po[s_in_chunk_mask, s_in_chunk] = s_true_scores[s_in_chunk_mask]
+
+                # check that scoring is consistent up to configured tolerance
+                # if this is not the case, evaluation metrics may be artificially inflated
+                close_check = torch.allclose(
+                    scores_sp[o_in_chunk_mask, o_in_chunk],
+                    o_true_scores[o_in_chunk_mask],
+                    rtol=self.tie_rtol,
+                    atol=self.tie_atol,
+                )
+                close_check &= torch.allclose(
+                    scores_po[s_in_chunk_mask, s_in_chunk],
+                    s_true_scores[s_in_chunk_mask],
+                    rtol=self.tie_rtol,
+                    atol=self.tie_atol,
+                )
+                if not close_check:
+                    diff_a = torch.abs(
+                        scores_sp[o_in_chunk_mask, o_in_chunk]
+                        - o_true_scores[o_in_chunk_mask]
+                    )
+                    diff_b = torch.abs(
+                        scores_po[s_in_chunk_mask, s_in_chunk]
+                        - s_true_scores[s_in_chunk_mask]
+                    )
+                    diff_all = torch.cat((diff_a, diff_b))
+                    self.config.log(
+                        f"Tie-handling: mean difference between scores was: {diff_all.mean()}."
+                    )
+                    self.config.log(
+                        f"Tie-handling: max difference between scores was: {diff_all.max()}."
+                    )
+                    error_message = "Error in tie-handling. The scores assigned to a triple by the SPO and SP_/_PO scoring implementations were not 'equal' given the configured tolerances. Verify the model's scoring implementations or consider increasing tie-handling tolerances."
+                    if self.config.get("entity_ranking.tie_handling.warn_only"):
+                        print(error_message, file=sys.stderr)
+                    else:
+                        raise ValueError(error_message)
 
                 # now compute the rankings (assumes order: None, _filt, _filt_test)
                 for ranking in rankings:
@@ -317,20 +414,17 @@ class EntityRankingJob(EvaluationJob):
                     )
                 )
 
-            # optionally: trace batch metrics
+            # update batch trace with the results
+            self.current_trace["batch"].update(metrics)
+
+            # run the post-batch hooks (may modify the trace)
+            for f in self.post_batch_hooks:
+                f(self)
+
+            # output, then clear trace
             if self.trace_batch:
-                self.trace(
-                    event="batch_completed",
-                    type="entity_ranking",
-                    scope="batch",
-                    split=self.eval_split,
-                    filter_splits=self.filter_splits,
-                    epoch=self.epoch,
-                    batch=batch_number,
-                    size=len(batch),
-                    batches=len(self.loader),
-                    **metrics,
-                )
+                self.trace(**self.current_trace["batch"])
+            self.current_trace["batch"] = None
 
             # output batch information to console
             self.config.print(
@@ -387,43 +481,10 @@ class EntityRankingJob(EvaluationJob):
                 )
         epoch_time += time.time()
 
-        # compute trace
-        trace_entry = dict(
-            type="entity_ranking",
-            scope="epoch",
-            split=self.eval_split,
-            filter_splits=self.filter_splits,
-            epoch=self.epoch,
-            batches=len(self.loader),
-            size=len(self.triples),
-            epoch_time=epoch_time,
-            event="eval_completed",
-            **metrics,
+        # update trace with results
+        self.current_trace["epoch"].update(
+            dict(epoch_time=epoch_time, event="eval_completed", **metrics,)
         )
-        for f in self.post_epoch_trace_hooks:
-            f(self, trace_entry)
-
-        # if validation metric is not present, try to compute it
-        metric_name = self.config.get("valid.metric")
-        if metric_name not in trace_entry:
-            trace_entry[metric_name] = eval(
-                self.config.get("valid.metric_expr"),
-                None,
-                dict(config=self.config, **trace_entry),
-            )
-
-        # write out trace
-        trace_entry = self.trace(**trace_entry, echo=True, echo_prefix="  ", log=True)
-
-        # reset model and return metrics
-        if was_training:
-            self.model.train()
-        self.config.log("Finished evaluating on " + self.eval_split + " split.")
-
-        for f in self.post_valid_hooks:
-            f(self, trace_entry)
-
-        return trace_entry
 
     def _densify_chunk_of_labels(
         self, labels: torch.Tensor, chunk_start: int, chunk_end: int
@@ -461,6 +522,9 @@ class EntityRankingJob(EvaluationJob):
         indices_chunk = torch.cat((indices_sp_chunk, indices_po_chunk), dim=1)
         dense_labels = torch.sparse.LongTensor(
             indices_chunk,
+            # since all sparse label tensors have the same value we could also
+            # create a new tensor here without indexing with:
+            # torch.full([indices_chunk.shape[1]], float("inf"), device=self.device)
             labels._values()[mask_sp | mask_po],
             torch.Size([labels.size()[0], (chunk_end - chunk_start) * 2]),
         ).to_dense()
@@ -504,9 +568,8 @@ num_ties for each true score.
         s_rank, s_num_ties = self._get_ranks_and_num_ties(scores_po, s_true_scores)
         return s_rank, s_num_ties, o_rank, o_num_ties, scores_sp, scores_po
 
-    @staticmethod
     def _get_ranks_and_num_ties(
-        scores: torch.Tensor, true_scores: torch.Tensor
+        self, scores: torch.Tensor, true_scores: torch.Tensor
     ) -> (torch.Tensor, torch.Tensor):
         """Returns rank and number of ties of each true score in scores.
 
@@ -524,8 +587,12 @@ num_ties for each true score.
 
         # Determine how many scores are greater than / equal to each true answer (in its
         # corresponding row of scores)
-        rank = torch.sum(scores > true_scores.view(-1, 1), dim=1, dtype=torch.long)
-        num_ties = torch.sum(scores == true_scores.view(-1, 1), dim=1, dtype=torch.long)
+        is_close = torch.isclose(
+            scores, true_scores.view(-1, 1), rtol=self.tie_rtol, atol=self.tie_atol
+        )
+        is_greater = scores > true_scores.view(-1, 1)
+        num_ties = torch.sum(is_close, dim=1, dtype=torch.long)
+        rank = torch.sum(is_greater & ~is_close, dim=1, dtype=torch.long)
         return rank, num_ties
 
     def _get_ranks(self, rank: torch.Tensor, num_ties: torch.Tensor) -> torch.Tensor:
@@ -566,7 +633,12 @@ num_ties for each true score.
         )
 
         hits_at_k = (
-            (torch.cumsum(rank_hist[: max(self.hits_at_k_s)], dim=0) / n).tolist()
+            (
+                torch.cumsum(
+                    rank_hist[: max(self.hits_at_k_s)], dim=0, dtype=torch.float64
+                )
+                / n
+            ).tolist()
             if n > 0.0
             else [0.0] * max(self.hits_at_k_s)
         )
@@ -575,3 +647,94 @@ num_ties for each true score.
             metrics["hits_at_{}{}".format(k, suffix)] = hits_at_k[k - 1]
 
         return metrics
+
+
+# HISTOGRAM COMPUTATION ###############################################################
+
+
+def __initialize_hist(hists, key, job):
+    """If there is no histogram with given `key` in `hists`, add an empty one."""
+    if key not in hists:
+        hists[key] = torch.zeros(
+            [job.dataset.num_entities()],
+            device=job.config.get("job.device"),
+            dtype=torch.float,
+        )
+
+
+def hist_all(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+    """Create histogram of all subject/object ranks (key: "all").
+
+    `hists` a dictionary of histograms to update; only key "all" will be affected. `s`,
+    `p`, `o` are true triples indexes for the batch. `s_ranks` and `o_ranks` are the
+    rank of the true answer for (?,p,o) and (s,p,?) obtained from a model.
+
+    """
+    __initialize_hist(hists, "all", job)
+    if job.head_and_tail:
+        __initialize_hist(hists, "head", job)
+        __initialize_hist(hists, "tail", job)
+        hist_head = hists["head"]
+        hist_tail = hists["tail"]
+
+    hist = hists["all"]
+    o_ranks_unique, o_ranks_count = torch.unique(o_ranks, return_counts=True)
+    s_ranks_unique, s_ranks_count = torch.unique(s_ranks, return_counts=True)
+    hist.index_add_(0, o_ranks_unique, o_ranks_count.float())
+    hist.index_add_(0, s_ranks_unique, s_ranks_count.float())
+    if job.head_and_tail:
+        hist_tail.index_add_(0, o_ranks_unique, o_ranks_count.float())
+        hist_head.index_add_(0, s_ranks_unique, s_ranks_count.float())
+
+
+def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+    for rel_type, rels in job.dataset.index("relations_per_type").items():
+        __initialize_hist(hists, rel_type, job)
+        hist = hists[rel_type]
+        if job.head_and_tail:
+            __initialize_hist(hists, f"{rel_type}_head", job)
+            __initialize_hist(hists, f"{rel_type}_tail", job)
+            hist_head = hists[f"{rel_type}_head"]
+            hist_tail = hists[f"{rel_type}_tail"]
+
+        mask = [_p in rels for _p in p.tolist()]
+        for r, m in zip(o_ranks, mask):
+            if m:
+                hists[rel_type][r] += 1
+                if job.head_and_tail:
+                    hist_tail[r] += 1
+
+        for r, m in zip(s_ranks, mask):
+            if m:
+                hists[rel_type][r] += 1
+                if job.head_and_tail:
+                    hist_head[r] += 1
+
+
+def hist_per_frequency_percentile(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+    # initialize
+    frequency_percs = job.dataset.index("frequency_percentiles")
+    for arg, percs in frequency_percs.items():
+        for perc, value in percs.items():
+            __initialize_hist(hists, "{}_{}".format(arg, perc), job)
+
+    # go
+    for perc in frequency_percs["subject"].keys():  # same for relation and object
+        for r, m_s, m_r in zip(
+            s_ranks,
+            [id in frequency_percs["subject"][perc] for id in s.tolist()],
+            [id in frequency_percs["relation"][perc] for id in p.tolist()],
+        ):
+            if m_s:
+                hists["{}_{}".format("subject", perc)][r] += 1
+            if m_r:
+                hists["{}_{}".format("relation", perc)][r] += 1
+        for r, m_o, m_r in zip(
+            o_ranks,
+            [id in frequency_percs["object"][perc] for id in o.tolist()],
+            [id in frequency_percs["relation"][perc] for id in p.tolist()],
+        ):
+            if m_o:
+                hists["{}_{}".format("object", perc)][r] += 1
+            if m_r:
+                hists["{}_{}".format("relation", perc)][r] += 1

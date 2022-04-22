@@ -9,7 +9,7 @@ import os
 
 import kge
 from kge import Config, Configurable, Dataset
-from kge.misc import filename_in_module
+from kge.misc import filename_in_module, init_from
 from kge.util import load_checkpoint
 from typing import Any, Dict, List, Optional, Union, Tuple
 
@@ -38,15 +38,46 @@ class KgeBase(torch.nn.Module, Configurable):
             "_base_model._relation_embedder.embeddings.weight": "_base_model._relation_embedder._embeddings.weight",
         }
 
-    def initialize(self, what: Tensor, initialize: str, initialize_args):
+    @staticmethod
+    def _initialize(what: Tensor, initialize: str, initialize_args):
         try:
             getattr(torch.nn.init, initialize)(what, **initialize_args)
-        except:
+        except Exception as e:
             raise ValueError(
                 "invalid initialization options: {} with args {}".format(
                     initialize, initialize_args
                 )
-            )
+            ) from e
+
+    def initialize(self, what: Tensor, config=None, configuration_key=None):
+        """Initialize tensor with provided configuration.
+
+        The initializers are taken from options "initialize" and "initialize_args".
+
+        If set, config and configuration_key overwrite the default configuration used in
+        this class. When both are set, self can be None.
+
+        """
+        if config is None:
+            config = self.config
+        if configuration_key is None:
+            configuration_key = self.configuration_key
+        configurable = Configurable(config, configuration_key)
+
+        initialize = configurable.get_option("initialize")
+
+        try:
+            initialize_args_key = "initialize_args." + initialize
+            initialize_args = configurable.get_option(initialize_args_key)
+        except KeyError:
+            initialize_args_key = "initialize_args"
+            initialize_args = configurable.get_option(initialize_args_key)
+
+        # Automatically set arg a (lower bound) for uniform_ if not given
+        if initialize == "uniform_" and "a" not in initialize_args:
+            initialize_args["a"] = initialize_args["b"] * -1
+
+        KgeBase._initialize(what, initialize, initialize_args)
 
     def prepare_job(self, job: "Job", **kwargs):
         r"""Prepares the given job to work with this model.
@@ -223,24 +254,6 @@ class KgeEmbedder(KgeBase):
 
         self.dim: int = self.get_option("dim")
 
-    def _init_embeddings(self, data: Tensor):
-        """Initialize embeddings with provided configuration."""
-        initialize = self.get_option("initialize")
-
-        try:
-            initialize_args_key = "initialize_args." + initialize
-            initialize_args = self.get_option(initialize_args_key)
-        except KeyError:
-            initialize_args_key = "initialize_args"
-            initialize_args = self.get_option(initialize_args_key)
-
-        # Automatically set arg a (lower bound) for uniform_ if not given
-        if initialize == "uniform_" and "a" not in initialize_args:
-            initialize_args["a"] = initialize_args["b"] * -1
-            self.set_option(initialize_args_key + ".a", initialize_args["a"], log=True)
-
-        self.initialize(data, initialize, initialize_args)
-
     @staticmethod
     def create(
         config: Config,
@@ -254,12 +267,13 @@ class KgeEmbedder(KgeBase):
         try:
             embedder_type = config.get_default(configuration_key + ".type")
             class_name = config.get(embedder_type + ".class_name")
-            module = importlib.import_module("kge.model")
         except:
             raise Exception("Can't find {}.type in config".format(configuration_key))
 
         try:
-            embedder = getattr(module, class_name)(
+            embedder = init_from(
+                class_name,
+                config.get("modules"),
                 config,
                 dataset,
                 configuration_key,
@@ -267,13 +281,11 @@ class KgeEmbedder(KgeBase):
                 init_for_load_only=init_for_load_only,
             )
             return embedder
-        except ImportError:
-            # perhaps TODO: try class with specified name -> extensibility
-            raise ValueError(
-                "Can't find class {} in 'kge.model' for embedder {}".format(
-                    class_name, embedder_type
-                )
+        except:
+            config.log(
+                f"Failed to create embedder {embedder_type} (class {class_name})."
             )
+            raise
 
     def _intersect_ids_with_pretrained_embedder(
         self, pretrained_embedder: "KgeEmbedder"
@@ -465,19 +477,20 @@ class KgeModel(KgeBase):
         init_for_load_only=False,
     ) -> "KgeModel":
         """Factory method for model creation."""
-
         try:
             if configuration_key is not None:
                 model_name = config.get(configuration_key + ".type")
             else:
                 model_name = config.get("model")
+            config._import(model_name)
             class_name = config.get(model_name + ".class_name")
-            module = importlib.import_module("kge.model")
         except:
             raise Exception("Can't find {}.type in config".format(configuration_key))
 
         try:
-            model = getattr(module, class_name)(
+            model = init_from(
+                class_name,
+                config.get("modules"),
                 config=config,
                 dataset=dataset,
                 configuration_key=configuration_key,
@@ -485,13 +498,9 @@ class KgeModel(KgeBase):
             )
             model.to(config.get("job.device"))
             return model
-        except ImportError:
-            # perhaps TODO: try class with specified name -> extensibility
-            raise ValueError(
-                "Can't find class {} in 'kge.model' for model {}".format(
-                    class_name, model_name
-                )
-            )
+        except:
+            config.log(f"Failed to create model {model_name} (class {class_name}).")
+            raise
 
     @staticmethod
     def create_default(
@@ -580,10 +589,16 @@ class KgeModel(KgeBase):
         self._entity_embedder.prepare_job(job, **kwargs)
         self._relation_embedder.prepare_job(job, **kwargs)
 
-        def append_num_parameter(job, trace):
-            trace["num_parameters"] = sum(map(lambda p: p.numel(), self.parameters()))
+        from kge.job import TrainingOrEvaluationJob
 
-        job.post_epoch_trace_hooks.append(append_num_parameter)
+        if isinstance(job, TrainingOrEvaluationJob):
+
+            def append_num_parameter(job):
+                job.current_trace["epoch"]["num_parameters"] = sum(
+                    map(lambda p: p.numel(), job.model.parameters())
+                )
+
+            job.post_epoch_hooks.append(append_num_parameter)
 
     def penalty(self, **kwargs) -> List[Tensor]:
         # Note: If the subject and object embedder are identical, embeddings may be
@@ -591,19 +606,47 @@ class KgeModel(KgeBase):
         # weighted).
         if "batch" in kwargs and "triples" in kwargs["batch"]:
             triples = kwargs["batch"]["triples"].to(self.config.get("job.device"))
-            return (
-                super().penalty(**kwargs)
-                + self.get_s_embedder().penalty(indexes=triples[:, S], **kwargs)
-                + self.get_p_embedder().penalty(indexes=triples[:, P], **kwargs)
-                + self.get_o_embedder().penalty(indexes=triples[:, O], **kwargs)
+            penalty_result = super().penalty(**kwargs) + self.get_p_embedder().penalty(
+                indexes=triples[:, P], **kwargs
             )
+            if self.get_s_embedder() is self.get_o_embedder():
+                weighted = self.get_s_embedder().get_option("regularize_args.weighted")
+                entity_indexes = None
+                if weighted:
+                    entity_indexes = torch.cat(
+                        (triples[:, S].view(-1, 1), triples[:, O].view(-1, 1)), dim=1
+                    )
+                entity_penalty_result = self.get_s_embedder().penalty(
+                    indexes=entity_indexes, **kwargs,
+                )
+                if not weighted:
+                    # backwards compatibility
+                    for penalty in entity_penalty_result:
+                        for p in penalty:
+                            p *= 2
+                penalty_result += entity_penalty_result
+            else:
+                penalty_result += self.get_s_embedder().penalty(
+                    indexes=triples[:, S], **kwargs
+                )
+                penalty_result += self.get_o_embedder().penalty(
+                    indexes=triples[:, O], **kwargs
+                )
+            return penalty_result
         else:
-            return (
-                super().penalty(**kwargs)
-                + self.get_s_embedder().penalty(**kwargs)
-                + self.get_p_embedder().penalty(**kwargs)
-                + self.get_o_embedder().penalty(**kwargs)
+            penalty_result = super().penalty(**kwargs) + self.get_p_embedder().penalty(
+                **kwargs
             )
+            if self.get_s_embedder() is self.get_o_embedder():
+                entity_penalty_result = self.get_s_embedder().penalty(**kwargs)
+                for penalty in entity_penalty_result:
+                    for p in penalty:
+                        p *= 2
+                penalty_result += entity_penalty_result
+            else:
+                penalty_result += self.get_s_embedder().penalty(**kwargs)
+                penalty_result += self.get_o_embedder().penalty(**kwargs)
+            return penalty_result
 
     def get_s_embedder(self) -> KgeEmbedder:
         return self._entity_embedder

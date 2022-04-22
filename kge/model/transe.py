@@ -1,5 +1,6 @@
 import torch
 from kge import Config, Dataset
+from kge.job import Job
 from kge.model.kge_model import RelationalScorer, KgeModel
 from torch.nn import functional as F
 
@@ -16,11 +17,23 @@ class TransEScorer(RelationalScorer):
         if combine == "spo":
             out = -F.pairwise_distance(s_emb + p_emb, o_emb, p=self._norm)
         elif combine == "sp_":
-            out = -torch.cdist(s_emb + p_emb, o_emb, p=self._norm)
+            # we do not use matrix multiplication due to this issue
+            # https://github.com/pytorch/pytorch/issues/42479
+            out = -torch.cdist(
+                s_emb + p_emb,
+                o_emb,
+                p=self._norm,
+                compute_mode="donot_use_mm_for_euclid_dist",
+            )
         elif combine == "_po":
-            out = -torch.cdist(o_emb - p_emb, s_emb, p=self._norm)
+            out = -torch.cdist(
+                o_emb - p_emb,
+                s_emb,
+                p=self._norm,
+                compute_mode="donot_use_mm_for_euclid_dist",
+            )
         else:
-            out = super().score_emb(s_emb, p_emb, o_emb, combine)
+            return super().score_emb(s_emb, p_emb, o_emb, combine)
         return out.view(n, -1)
 
 
@@ -41,3 +54,15 @@ class TransE(KgeModel):
             configuration_key=configuration_key,
             init_for_load_only=init_for_load_only,
         )
+
+    def prepare_job(self, job: Job, **kwargs):
+        super().prepare_job(job, **kwargs)
+
+        from kge.job import TrainingJobNegativeSampling
+
+        if (
+            isinstance(job, TrainingJobNegativeSampling)
+            and job.config.get("negative_sampling.implementation") == "auto"
+        ):
+            # TransE with batch currently tends to run out of memory, so we use triple.
+            job.config.set("negative_sampling.implementation", "triple", log=True)
