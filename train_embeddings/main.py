@@ -306,7 +306,7 @@ if __name__ == '__main__':
                     help="标签平滑的数量.")
     parser.add_argument("--outfile", type=str, default='tucker.model', nargs="?",
                     help="输出文件保存名字")
-    parser.add_argument("--valid_steps", type=int, default=1, nargs="?",
+    parser.add_argument("--valid_steps", type=int, default=5, nargs="?",
                     help="在你验证之前的epoch")
     parser.add_argument("--loss_type", type=str, default='BCE', nargs="?",
                     help="损失函数")

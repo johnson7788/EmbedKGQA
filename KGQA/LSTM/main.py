@@ -127,48 +127,41 @@ def validate(data_path, device, model, word2idx, entity2idx, model_name):
     total_correct = 0
     error_count = 0
     for i in tqdm(range(len(data))):
-        try:
-            # 调用生成器
-            d = next(data_gen)
-            # 头实体id head:tensor(675, device='cuda:0')
-            head = d[0].to(device)
-            #问题编码：question:tensor([ 0,  8, 19, 20, 10, 11, 12], device='cuda:0')
-            question = d[1].to(device)
-            #真实答案id ans:881
-            ans = d[2]
-            #问题长度 ques_len：7
-            ques_len = d[3].unsqueeze(0)
-            # 问题的id转成tensor：tail_test：tensor([881], device='cuda:0')
-            tail_test = torch.tensor(ans, dtype=torch.long).to(device)
-            #通过头实体，问题，问题长度，计算尾实体id tensor(881，680)
-            top_2 = model.get_score_ranked(head=head, sentence=question, sent_len=ques_len)
-            #tensor 转成list格式：top_2_idx：[881, 680]
-            top_2_idx = top_2[1].tolist()[0]
-            #头实体id转成int格式 head_idx：675
-            head_idx = head.tolist()
-            #如果头实体id = top_2_idx[0]，那么预测尾实体id=top_2_idx[1]。否则预测尾实体id=top_2_idx[0]=881，正确的
-            if top_2_idx[0] == head_idx:
-                pred_ans = top_2_idx[1]
-            else:
-                pred_ans = top_2_idx[0]
-            if type(ans) is int:
-                ans = [ans]
-            is_correct = 0
-            # 如果预测尾实体id在真实尾实体id中，total_correct，正确值+1
-            if pred_ans in ans:
-                total_correct += 1
-                is_correct = 1
-            else:
-                error_count += 1
-            # 问题 q_text：
-            q_text = d[-1]
-            #答案组成：问题，预测尾实体答案id，答案正确为1，错误为0
-            answers.append(q_text + '\t' + str(pred_ans) + '\t' + str(is_correct))
-        except Exception as e:
-            print(f"错误的异常是:")
-            print(e)
+        d = next(data_gen)
+        # 头实体id head:tensor(675, device='cuda:0')
+        head = d[0].to(device)
+        #问题编码：question:tensor([ 0,  8, 19, 20, 10, 11, 12], device='cuda:0')
+        question = d[1].to(device)
+        #真实答案id ans:881
+        ans = d[2]
+        #问题长度 ques_len：7
+        ques_len = d[3].unsqueeze(0)
+        # 问题的id转成tensor：tail_test：tensor([881], device='cuda:0')
+        tail_test = torch.tensor(ans, dtype=torch.long).to(device)
+        #通过头实体，问题，问题长度，计算尾实体id tensor(881，680)
+        top_2 = model.get_score_ranked(head=head, sentence=question, sent_len=ques_len)
+        #tensor 转成list格式：top_2_idx：[881, 680]
+        top_2_idx = top_2[1].tolist()[0]
+        #头实体id转成int格式 head_idx：675
+        head_idx = head.tolist()
+        #如果头实体id = top_2_idx[0]，那么预测尾实体id=top_2_idx[1]。否则预测尾实体id=top_2_idx[0]=881，正确的
+        if top_2_idx[0] == head_idx:
+            pred_ans = top_2_idx[1]
+        else:
+            pred_ans = top_2_idx[0]
+        if type(ans) is int:
+            ans = [ans]
+        is_correct = 0
+        # 如果预测尾实体id在真实尾实体id中，total_correct，正确值+1
+        if pred_ans in ans:
+            total_correct += 1
+            is_correct = 1
+        else:
             error_count += 1
-            
+        # 问题 q_text：
+        q_text = d[-1]
+        #答案组成：问题，预测尾实体答案id，答案正确为1，错误为0
+        answers.append(q_text + '\t' + str(pred_ans) + '\t' + str(is_correct))
     print('回答问题错误的的个数是：',error_count)
     #准确率计算：总正确/总数据
     accuracy = total_correct/len(data)
