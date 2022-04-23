@@ -19,6 +19,7 @@ from model import RelationExtractor
 from flask import Flask, request, jsonify, abort
 import random
 from py2neo import Graph
+import collections
 
 import logging.config
 # from py2neo import Graph
@@ -483,6 +484,16 @@ class PreprocessTrain():
         self.data_dir = os.path.join(self.project_dir, "data/waishen")
         self.all_data_json = os.path.join(self.data_dir, "all.json")
         self.relations = ['审计', '子单位', '涉及', '简称', '存在', '审计日期', '篇章', '条款']
+        self.part_answer = {
+            '审计': "审计了哪个单位",
+            '子单位': "的子单位是什么",
+            '涉及': "涉及的资金是多少",
+            '简称': "的简称是什么",
+            '存在': "存在哪些审计问题",
+            '审计日期': "的审计日期是什么时候",
+            '篇章': "有哪些篇章",
+            '条款':  "有哪些条款",
+        }
 
     def data_triple(self):
         # graph = Graph(host='127.0.0.1', user='neo4j', password='welcome', name='neo4j',port=7698)#
@@ -534,50 +545,30 @@ class PreprocessTrain():
 
     def data_qa(self):
         qa = []
+        # 至少保证训练数据集中有一条问题和答案
+        qa_at_least = collections.defaultdict(list)
         with open(self.all_data_json, 'r') as f:
             data = json.load(f)
             for one_data in data:
-                if one_data[1] == '审计':
-                    shen = '[' + one_data[0] + ']' + "审计了哪个单位"
+                rel_name = one_data[1]  # eg: '审计'
+                if self.part_answer.get(rel_name):
+                    shen = '[' + one_data[0] + ']' + self.part_answer.get(rel_name)
                     qa_shen = [shen, one_data[2]]
-                    qa.append(qa_shen)
-
-                elif one_data[1] == "子单位":
-                    zi = '[' + one_data[0] + ']' + "的子单位是什么"
-                    qa_zi = [zi, one_data[2]]
-                    qa.append(qa_zi)
-
-                elif one_data[1] == "涉及":
-                    she = '[' + one_data[0] + ']' + "涉及的资金是多少"
-                    qa_she = [she, one_data[2]]
-                    qa.append(qa_she)
-
-                elif one_data[1] == "简称":
-                    jian = '[' + one_data[0] + ']' + "的简称是什么"
-                    qa_jian = [jian, one_data[2]]
-                    qa.append(qa_jian)
-
-                elif one_data[1] == "存在":
-                    cun = '[' + one_data[0] + ']' + "存在哪些审计问题"
-                    qa_cun = [cun, one_data[2]]
-                    qa.append(qa_cun)
-
-                elif one_data[1] == "篇章":
-                    cun = '[' + one_data[0] + ']' + "有哪些篇章"
-                    qa_cun = [cun, one_data[2]]
-                    qa.append(qa_cun)
-
-                elif one_data[1] == "条款":
-                    cun = '[' + one_data[0] + ']' + "有哪些条款"
-                    qa_cun = [cun, one_data[2]]
-                    qa.append(qa_cun)
+                    if qa_at_least[rel_name]:
+                        # 其它都加到数据集合中
+                        qa.append(qa_shen)
+                    else:
+                        # 至少加一条数据
+                        qa_at_least[rel_name].append(qa_shen)
             print(f"生成的问答对数据集大小：{len(qa)}")
             random.shuffle(qa)
             train_data_num = int(len(qa) * 0.8)
             valid_data_num = int(len(qa) * 0.1)
             train_data, valid_data, test_data = qa[:train_data_num], qa[
                                                                      train_data_num:train_data_num + valid_data_num], qa[
-                                                                                                                      train_data_num + valid_data_num:]
+            #至少加一条数据到train数据集中
+            for k,v in qa_at_least.items():
+                train_data.extend(v)
             # 保存到json格式的文件中
             with open(os.path.join(self.data_dir, 'qa_train.json'), 'w', encoding='utf-8') as f:
                 json.dump(train_data, f, ensure_ascii=False)

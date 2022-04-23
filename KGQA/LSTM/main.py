@@ -46,7 +46,7 @@ parser.add_argument('--hidden_dim', type=int, default=200)
 parser.add_argument('--embedding_dim', type=int, default=256)
 parser.add_argument('--relation_dim', type=int, default=200) #关系的维度保持200
 parser.add_argument('--use_cuda', type=bool, default=True) #是否使用GPU
-parser.add_argument('--patience', type=int, default=10)#验证集/开发集5次不更新最好指标后，就停止训练
+parser.add_argument('--patience', type=int, default=20)#验证集/开发集5次不更新最好指标后，就停止训练
 parser.add_argument('--freeze', type=str2bool, default=True)#冻结embedding预训练的参数
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5,6,7"
@@ -73,18 +73,18 @@ def get_vocab(data):
     idx2word = {}
     # d:['广州市审计局', '空审计了哪个单位', ['广州市现代农业发展平台建设（示范园区建设）资金']]
     for d in data:
-            # sent: '空审计了哪个单位'
-            sent = d[1]
-            # for word in sent.split(): #问题是英文的时候
-            # 问题是中文的时候,将问题中的每个字编码：{'空': 0, '审': 1, '计': 2, '了': 3, '哪': 4, '个': 5, '单': 6, '位': 7}
-            for word in sent:
-                if word not in word_to_ix:
-                    idx2word[len(word_to_ix)] = word
-                    word_to_ix[word] = len(word_to_ix)
+        # sent: '空审计了哪个单位'
+        sent = d[1]
+        # for word in sent.split(): #问题是英文的时候
+        # 问题是中文的时候,将问题中的每个字编码：{'空': 0, '审': 1, '计': 2, '了': 3, '哪': 4, '个': 5, '单': 6, '位': 7}
+        for word in sent:
+            if word not in word_to_ix:
+                idx2word[len(word_to_ix)] = word
+                word_to_ix[word] = len(word_to_ix)
 
-            length = len(sent.split()) # sent.split() = ['空审计了哪个单位']
-            if length > maxLength:
-                maxLength = length
+        length = len(sent.split()) # sent.split() = ['空审计了哪个单位']
+        if length > maxLength:
+            maxLength = length
 
     return word_to_ix, idx2word, maxLength
 
@@ -300,15 +300,10 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                 elif (score < best_score + eps) and (no_update < patience): #当开发集的得分小于最好结果时，停止训练
                     no_update +=1
                     # print("Validation accuracy decreases to %f from %f, %d more epoch to check"%(score, best_score, patience-no_update))
-                    print("验证准确率从 %f 下降到 %f, 还需要 %d 个epoch去检查 "%(score, best_score, patience-no_update))
-                elif no_update == patience:
-                    # print("Model has exceed patience. Saving best model and exiting")
-                    print("在连续5个epoch训练中，开发集的准去率已经不在提高. 保存最好的训练模型并退出")
-                    torch.save(best_model, checkpoint_path + "best_score_model.pt")
-                    exit()
+                    print("验证准确率从 %f 下降到 %f, 还需要 %d 个epoch去检查 "%(best_score, score, patience-no_update))
                 if epoch == nb_epochs-1:
                     # print("Final Epoch has reached. Stopping and saving model.")
-                    print("最后的epoch已经完成. 停止并保存模型.")
+                    print("最后的epoch已经完成. 停止并保存最好的模型.")
                     torch.save(best_model, checkpoint_path +"best_score_model.pt")
                     exit()
                     
