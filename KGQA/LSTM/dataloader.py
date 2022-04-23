@@ -36,18 +36,28 @@ class DatasetMetaQA(Dataset):
         one_hot.scatter_(0, indices, 1)
         return one_hot
 
-    def __getitem__(self, index):
-        data_point = self.data[index] #data_point:['Honeydripper', 'NE directed_by', ['John Sayles']]
-        question_text = data_point[1] #question_text:'NE directed_by'
+    def __getitem__(self, index): #index表示第几个问题，从问题列表中获取，index:927
+        # data_point:['市口腔医院', '空存在哪些审计问题', ['不支持诊疗信息推']]
+        data_point = self.data[index]
+        # question_text: '空存在哪些审计问题'
+        question_text = data_point[1]
         # question_ids = [self.word_to_ix[word] for word in question_text.split()] #问题是英文时候question_ids:[4, 99]
-        question_ids = [self.word_to_ix[word] for word in question_text] #问题是中文时候question_ids:[4, 99]
-        head_id = self.entity2idx[data_point[0].strip()] #head_id:13933
-        tail_ids = [] #tails_id:[16991]
+        # question_ids[0, 21, 22, 4, 23, 1, 2, 24, 25]
+        question_ids = [self.word_to_ix[word] for word in question_text]
+        # head_id:587
+        head_id = self.entity2idx[data_point[0].strip()]
+        # tails_id:[16991]
+        tail_ids = []
+
         for tail_name in data_point[2]:
+
             tail_name = tail_name.strip()
+
             tail_ids.append(self.entity2idx[tail_name])
+
         tail_onehot = self.toOneHot(tail_ids) #tail_onehot:43234
-        return question_ids, head_id, tail_onehot 
+
+        return question_ids, head_id, tail_onehot
 
 
 

@@ -52,17 +52,26 @@ class PruningModel(nn.Module):
         return outputs
 
     def getQuestionEmbedding(self, question_tokenized, attention_mask):
+        # roberta_last_hidden_states （16，64，768）
         roberta_last_hidden_states = self.roberta_model(question_tokenized, attention_mask=attention_mask)[0]
+        # states ：（64，16，768）将第一个和第二个维度调换
         states = roberta_last_hidden_states.transpose(1,0)
+        #cls_embedding：（16，768）
         cls_embedding = states[0]
+        # cls的编码也就是问题的编码
         question_embedding = cls_embedding
         # question_embedding = torch.mean(roberta_last_hidden_states, dim=1)
+
         return question_embedding
     
     def forward(self, question_tokenized, attention_mask, rel_one_hot):
+        #获取问题的输入embedding
         question_embedding = self.getQuestionEmbedding(question_tokenized, attention_mask)
+        #线性层输出prediction （16，18478）
         prediction = self.applyNonLinear(question_embedding)
+        #获取预测值（18478）
         prediction = torch.sigmoid(prediction)
+        #获取实际值
         actual = rel_one_hot
         if self.label_smoothing:
             actual = ((1.0-self.label_smoothing)*actual) + (1.0/actual.size(1)) 
@@ -71,8 +80,11 @@ class PruningModel(nn.Module):
         
 
     def get_score_ranked(self, question_tokenized, attention_mask):
+        #获取问题的输入embedding
         question_embedding = self.getQuestionEmbedding(question_tokenized.unsqueeze(0), attention_mask.unsqueeze(0))
+        #得出预测值
         prediction = self.applyNonLinear(question_embedding)
+        # 得出预测值（
         prediction = torch.sigmoid(prediction).squeeze()
         # top2 = torch.topk(scores, k=2, largest=True, sorted=True)
         # return top2

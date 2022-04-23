@@ -140,3 +140,4 @@ dmypy.json
 *.npy
 kg_embeddings/waishen
 kg_embeddings/waishen/*
+kg_embeddings

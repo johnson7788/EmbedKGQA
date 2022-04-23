@@ -41,13 +41,19 @@ class DatasetPruning(Dataset):
         return one_hot
 
     def tokenize_question(self, question):
+
         question = "<s> " + question + " </s>"
+
         question_tokenized = self.tokenizer.tokenize(question)
-        question_tokenized = self.pad_sequence(question_tokenized, 64)
+
+        question_tokenized = self.pad_sequence(question_tokenized, 64) #问题的padding后的长度为64
+
         question_tokenized = torch.tensor(self.tokenizer.encode(question_tokenized, add_special_tokens=False))
+
         attention_mask = []
+
         for q in question_tokenized:
-            # 1 means padding token
+            # 1 means padding token 有值的点，attention_mask为1，没有值的点，attention_mask为0
             if q == 1:
                 attention_mask.append(0)
             else:
@@ -55,10 +61,14 @@ class DatasetPruning(Dataset):
         return question_tokenized, torch.tensor(attention_mask, dtype=torch.long)
     
     def __getitem__(self, index):
-        data_point = self.data[index]
-        question_text = data_point[0]
+        # data_point('what party is bloomberg affiliated with ', [5712], 'what party is bloomberg affiliated with [m.09pfj]')
+        data_point = self.data[index] #index是随机的，315
+        question_text = data_point[0] # question_text：'where was leonardo da vinci when he died '
+        #将问题tokenizer，64维向量
         question_tokenized, attention_mask = self.tokenize_question(question_text)
+        #获取关系的id值
         rel_ids = data_point[1]
+        #关系有onehot向量表示，18474，有18474个关系
         rel_onehot = self.toOneHot(rel_ids)
         return question_tokenized, attention_mask, rel_onehot
 

@@ -22,9 +22,9 @@ class RelationExtractor(nn.Module):
         self.do_batch_norm = do_batch_norm
         if not self.do_batch_norm:
             print('Not doing batch norm')
-        self.roberta_pretrained_weights = 'roberta-base'
-        self.roberta_model = RobertaModel.from_pretrained(self.roberta_pretrained_weights)
-        for param in self.roberta_model.parameters():
+        self.bert_pretrained_weights = 'bert-base-chinese'
+        self.bert_model = BertModel.from_pretrained(self.bert_pretrained_weights)
+        for param in self.bert_model.parameters():
             param.requires_grad = True
         if self.model == 'DistMult':
             multiplier = 1
@@ -219,8 +219,17 @@ class RelationExtractor(nn.Module):
 
     
     def getQuestionEmbedding(self, question_tokenized, attention_mask):
-        roberta_last_hidden_states = self.roberta_model(question_tokenized, attention_mask=attention_mask)[0]
-        states = roberta_last_hidden_states.transpose(1,0)
+        """
+
+        :param question_tokenized: [batch_size, seq_len]
+        :type question_tokenized:
+        :param attention_mask: [batch_size, seq_len]
+        :type attention_mask:
+        :return:
+        :rtype:
+        """
+        last_hidden_states = self.bert_model(question_tokenized, attention_mask=attention_mask)[0]
+        states = last_hidden_states.transpose(1,0)
         cls_embedding = states[0]
         question_embedding = cls_embedding
         # question_embedding = torch.mean(roberta_last_hidden_states, dim=1)
