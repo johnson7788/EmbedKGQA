@@ -681,7 +681,7 @@ def do_train():
     return jsonify("训练完成")
 
 if __name__ == "__main__":
-    model = LSTMKQGA()
     PT = PreprocessTrain()
     PT.run()
+    model = LSTMKQGA()
     app.run(host='0.0.0.0', port=9966, debug=False, threaded=False)
