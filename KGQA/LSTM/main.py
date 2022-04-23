@@ -392,30 +392,9 @@ def data_generator(data, word2ix, entity2idx):
         yield torch.tensor(head, dtype=torch.long),torch.tensor(encoded_question, dtype=torch.long) , ans, torch.tensor(len(encoded_question), dtype=torch.long), data_sample[1]
 
 
-
-
-# hops = args.hops #1，2，3跳问题
-# if hops in ['1', '2', '3']:
-#     hops = hops + 'hop'
-# if args.kg_type == 'half':
-#     data_path = '../../data/QA_data/MetaQA/qa_train_' + hops + '_half.txt'
-# else:
-#     data_path = '../../data/QA_data/MetaQA/qa_train_' + hops + '.txt'
-# print('Train file is ', data_path)
-#
-# hops_without_old = hops.replace('_old', '')
-# valid_data_path = '../../data/QA_data/MetaQA/qa_dev_' + hops_without_old + '.txt'
-# test_data_path = '../../data/QA_data/MetaQA/qa_test_' + hops_without_old + '.txt'
-
-#问答数据训练的路径
-# data_path = '../../data/QA_data/waishen/train.json'
-# print('Train file is ', data_path)
-# valid_data_path = '../../data/QA_data/waishen/valid.json'
-# test_data_path = '../../data/QA_data/waishen/test.json'
-
 data_path = '../../data/waishen/qa_train.json'
 print('Train file is ', data_path)
-valid_data_path = '../../data/waishen/qa_dev.json'
+valid_data_path = '../../data/waishen/qa_valid.json'
 test_data_path = '../../data/waishen/qa_test.json'
 
 
