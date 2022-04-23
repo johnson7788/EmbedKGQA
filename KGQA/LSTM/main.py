@@ -306,7 +306,6 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
                     print("最后的epoch已经完成. 停止并保存最好的模型.")
                     torch.save(best_model, checkpoint_path +"best_score_model.pt")
                     exit()
-                    
 
 def process_text_file(text_file, split=False):
     '''训练问题的数据进行处理，['[市审计局]审计了哪个单位', '上海理工大学'] 变成-》['市审计局', '空审计了哪个单位', ['上海理工大学']]，将问题变成关系'''

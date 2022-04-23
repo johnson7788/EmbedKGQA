@@ -549,34 +549,33 @@ class PreprocessTrain():
         qa_at_least = collections.defaultdict(list)
         with open(self.all_data_json, 'r') as f:
             data = json.load(f)
-            for one_data in data:
-                rel_name = one_data[1]  # eg: '审计'
-                if self.part_answer.get(rel_name):
-                    shen = '[' + one_data[0] + ']' + self.part_answer.get(rel_name)
-                    qa_shen = [shen, one_data[2]]
-                    if qa_at_least[rel_name]:
-                        # 其它都加到数据集合中
-                        qa.append(qa_shen)
-                    else:
-                        # 至少加一条数据
-                        qa_at_least[rel_name].append(qa_shen)
-            print(f"生成的问答对数据集大小：{len(qa)}")
-            random.shuffle(qa)
-            train_data_num = int(len(qa) * 0.8)
-            valid_data_num = int(len(qa) * 0.1)
-            train_data, valid_data, test_data = qa[:train_data_num], qa[
-                                                                     train_data_num:train_data_num + valid_data_num], qa[
-            #至少加一条数据到train数据集中
-            for k,v in qa_at_least.items():
-                train_data.extend(v)
-            # 保存到json格式的文件中
-            with open(os.path.join(self.data_dir, 'qa_train.json'), 'w', encoding='utf-8') as f:
-                json.dump(train_data, f, ensure_ascii=False)
-            with open(os.path.join(self.data_dir, 'qa_valid.json'), 'w', encoding='utf-8') as f:
-                json.dump(valid_data, f, ensure_ascii=False)
-            with open(os.path.join(self.data_dir, 'qa_test.json'), 'w', encoding='utf-8') as f:
-                json.dump(test_data, f, ensure_ascii=False)
-            print("生成问答数据集完成")
+        for one_data in data:
+            rel_name = one_data[1]  # eg: '审计'
+            if self.part_answer.get(rel_name):
+                shen = '[' + one_data[0] + ']' + self.part_answer.get(rel_name)
+                qa_shen = [shen, one_data[2]]
+                if qa_at_least[rel_name]:
+                    # 其它都加到数据集合中
+                    qa.append(qa_shen)
+                else:
+                    # 至少加一条数据
+                    qa_at_least[rel_name].append(qa_shen)
+        print(f"生成的问答对数据集大小：{len(qa)}")
+        random.shuffle(qa)
+        train_data_num = int(len(qa) * 0.8)
+        valid_data_num = int(len(qa) * 0.1)
+        train_data, valid_data, test_data = qa[:train_data_num], qa[train_data_num:train_data_num + valid_data_num], qa[train_data_num + valid_data_num:]
+        #至少加一条数据到train数据集中
+        for k, v in qa_at_least.items():
+            train_data.extend(v)
+        # 保存到json格式的文件中
+        with open(os.path.join(self.data_dir, 'qa_train.json'), 'w', encoding='utf-8') as f:
+            json.dump(train_data, f, ensure_ascii=False)
+        with open(os.path.join(self.data_dir, 'qa_valid.json'), 'w', encoding='utf-8') as f:
+            json.dump(valid_data, f, ensure_ascii=False)
+        with open(os.path.join(self.data_dir, 'qa_test.json'), 'w', encoding='utf-8') as f:
+            json.dump(test_data, f, ensure_ascii=False)
+        print("生成问答数据集完成")
 
     def train_embedding(self):
         cmd = f"cd {self.project_dir}/train_embeddings && python main.py"
