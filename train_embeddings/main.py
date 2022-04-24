@@ -322,7 +322,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="waishen", nargs="?",
                     help="使用哪个数据集: waishen,fbwq_full, FB15k-237, MetaQA or WN18RR.")
-    parser.add_argument("--num_iterations", type=int, default=500, nargs="?",
+    parser.add_argument("--num_iterations", type=int, default=1000, nargs="?",
                     help="迭代的次数.")
     parser.add_argument("--batch_size", type=int, default=128, nargs="?",
                     help="批次大小.")
@@ -348,7 +348,7 @@ if __name__ == '__main__':
                     help="Amount of label smoothing.")
     parser.add_argument("--outfile", type=str, default='metaqa_complex.model', nargs="?",
                     help="训练好的模型的名字")
-    parser.add_argument("--valid_steps", type=int, default=1, nargs="?",
+    parser.add_argument("--valid_steps", type=int, default=50, nargs="?",
                     help="Epochs before u validate")
     parser.add_argument("--loss_type", type=str, default='BCE', nargs="?",
                     help="损失函数")

@@ -103,7 +103,7 @@ class RelationExtractor(nn.Module):
         # LSTM将单词嵌入作为输入，并输出维度为hidden_dim的隐藏状态。
         self.pretrained_embeddings = pretrained_embeddings
         print('冻结预训练的实体Embedding的参数:', self.freeze)
-        self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
+         self.embedding = nn.Embedding.from_pretrained(torch.FloatTensor(pretrained_embeddings), freeze=self.freeze)
         # self.embedding = nn.Embedding(self.num_entities, self.relation_dim)
         # xavier_normal_(self.embedding.weight.data)
 
