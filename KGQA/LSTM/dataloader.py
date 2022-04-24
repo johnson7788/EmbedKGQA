@@ -55,7 +55,7 @@ class DatasetMetaQA(Dataset):
         question_text = data_point[1]   # 获取问题, eg: 'NE directed_by'
         question_ids = [self.word_to_ix[word] for word in question_text.split()] # 问题变成id，eg: [4, 99]
         head_id = self.entity2idx[data_point[0].strip()]  # 头实体变成id, eg: 33684
-        tail_ids = []  # 存储尾实体变成id， eg: [17281]
+        tail_ids = []  # 存储尾实体变成id， eg: [17281], eg: [5683, 36879, 20347]
         for tail_name in data_point[2]:  # 处理尾实体，即答案
             tail_name = tail_name.strip()  # eg: 一个尾实体, 'Jordan Barker'
             tail_ids.append(self.entity2idx[tail_name])   # 尾实体变成id

@@ -23,7 +23,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser()
 parser.add_argument('--hops', type=str, default='1')
 parser.add_argument('--ls', type=float, default=0.0, help='label_smoothing的值')
-parser.add_argument('--validate_every', type=int, default=5)
+parser.add_argument('--validate_every', type=int, default=10, help='每隔多少个epoch进行一次验证')
 parser.add_argument('--model', type=str, default='ComplEx')
 parser.add_argument('--kg_type', type=str, default='full',help="可以选择half，或者full")
 
@@ -45,7 +45,7 @@ parser.add_argument('--hidden_dim', type=int, default=200)
 parser.add_argument('--embedding_dim', type=int, default=256, help='嵌入的维度, 问题词的嵌入的维度')
 parser.add_argument('--relation_dim', type=int, default=200, help='注意，这里要和训练embedding时保持一致')
 parser.add_argument('--use_cuda', type=bool, default=False, help='是否使用GPU')
-parser.add_argument('--patience', type=int, default=5, help='验证集多少次不更新最好指标后，那么就停止训练')
+parser.add_argument('--patience', type=int, default=30, help='验证集多少次不更新最好指标后，那么就停止训练')
 parser.add_argument('--freeze', type=str2bool, default=True, help="是否冻结预训练的实体Embedding的参数")
 
 # os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,3,4,5,6,7"
@@ -137,6 +137,7 @@ def validate(data_path, device, model, word2idx, entity2idx, model_name):
     data_gen = data_generator(data=data, word2ix=word2idx, entity2idx=entity2idx)
     total_correct = 0
     error_count = 0
+    correct_length = 0
     for i in tqdm(range(len(data))):
         try:
             d = next(data_gen)
@@ -145,25 +146,27 @@ def validate(data_path, device, model, word2idx, entity2idx, model_name):
             ans = d[2]
             ques_len = d[3].unsqueeze(0)
             tail_test = torch.tensor(ans, dtype=torch.long).to(device)
-            top_2 = model.get_score_ranked(head=head, sentence=question, sent_len=ques_len)
-            top_2_idx = top_2[1].tolist()[0]
+            predict_index = model.get_score_ranked(head=head, sentence=question, sent_len=ques_len)
+            # top2 = torch.topk(predict, k=2, largest=True, sorted=True)
+            # top_2_idx = top_2[1].tolist()[0]
             head_idx = head.tolist()
-            if top_2_idx[0] == head_idx:
-                pred_ans = top_2_idx[1]
-            else:
-                pred_ans = top_2_idx[0]
+            predict = np.where(predict_index==1)[1]
+            predict = predict.tolist()
             if type(ans) is int:
                 ans = [ans]
             is_correct = 0
-            if pred_ans in ans:
+            if predict == ans:
                 total_correct += 1
                 is_correct = 1
+            if len(predict) == len(ans):
+                correct_length += 1
             q_text = d[-1]
-            answers.append(q_text + '\t' + str(pred_ans) + '\t' + str(is_correct))
-        except:
+            answers.append(q_text + '\t' + str(predict) + '\t' + str(is_correct))
+        except Exception as e:
             error_count += 1
+            print(e)
             
-    print(error_count)
+    print(f"预测的样本个数: {len(data)}, 预测的实体数量和答案数量相同的是: {correct_length}, 预测Exception数量: {error_count}")
     accuracy = total_correct/len(data)
     return answers, accuracy
 
@@ -280,7 +283,7 @@ def train(data_path, entity_path, relation_path, entity_dict, relation_dict, neg
     best_model = model.state_dict()
     no_update = 0
     for epoch in range(nb_epochs):
-        phases = []
+        phases = ['valid']
         for i in range(validate_every):
             phases.append('train')
         phases.append('valid')
